@@ -158,33 +158,70 @@ export default function AdminDashboard() {
     const token = localStorage.getItem('token');
     
     try {
-      const response = await fetch(`http://localhost:5000/api/admin/scrapers/${scraperId}/${action}`, {
-        method: 'POST',
+      // First check current scraper status
+      const statusResponse = await fetch(`http://localhost:5000/api/admin/scrapers`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
       
-      if (response.ok) {
-        const result = await response.json();
-        console.log(result.message);
+      if (statusResponse.ok) {
+        const scrapersData = await statusResponse.json();
+        const scraper = scrapersData.find((s: any) => s.id === scraperId);
         
-        // Refresh scraper data only
-        const scrapersResponse = await fetch('http://localhost:5000/api/admin/scrapers', {
+        if (!scraper) {
+          console.error('Scraper not found:', scraperId);
+          return;
+        }
+        
+        // Check if action is valid for current status
+        if (action === 'pause' && scraper.status !== 'running') {
+          console.error('Cannot pause scraper - it is not running. Current status:', scraper.status);
+          return;
+        }
+        
+        if (action === 'resume' && scraper.status === 'running') {
+          console.error('Cannot resume scraper - it is already running. Current status:', scraper.status);
+          return;
+        }
+        
+        if (action === 'stop' && scraper.status !== 'running') {
+          console.error('Cannot stop scraper - it is not running. Current status:', scraper.status);
+          return;
+        }
+        
+        // Proceed with action
+        const response = await fetch(`http://localhost:5000/api/admin/scrapers/${scraperId}/${action}`, {
+          method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         });
         
-        if (scrapersResponse.ok) {
-          const scrapersData = await scrapersResponse.json();
-          setScrapers(scrapersData);
+        if (response.ok) {
+          const result = await response.json();
+          console.log(result.message);
+          
+          // Refresh scraper data
+          const scrapersResponse = await fetch('http://localhost:5000/api/admin/scrapers', {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (scrapersResponse.ok) {
+            const scrapersData = await scrapersResponse.json();
+            setScrapers(scrapersData);
+          }
+        } else {
+          const errorData = await response.json();
+          console.error('Failed to perform scraper action:', errorData.message || 'Unknown error');
         }
       } else {
-        const errorData = await response.json();
-        console.error('Failed to perform scraper action:', errorData.message || 'Unknown error');
+        console.error('Failed to fetch scraper status');
       }
     } catch (error) {
       console.error('Scraper action error:', error);
