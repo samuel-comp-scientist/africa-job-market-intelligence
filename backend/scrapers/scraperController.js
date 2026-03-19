@@ -1,4 +1,7 @@
 const AfricanJobScraper = require('./AfricanJobScraper');
+const AdzunaScraper = require('./AdzunaScraper');
+const LinkedInScraper = require('./LinkedInScraper');
+const GlassdoorScraper = require('./GlassdoorScraper');
 const Job = require('../models/Job');
 const Company = require('../models/Company');
 
@@ -8,6 +11,9 @@ const Company = require('../models/Company');
 class ScraperController {
   constructor() {
     this.scraper = AfricanJobScraper;
+    this.adzunaScraper = new AdzunaScraper();
+    this.linkedinScraper = new LinkedInScraper();
+    this.glassdoorScraper = new GlassdoorScraper();
     this.activeScrapers = new Map(); // Track individual scraper states
     this.schedules = new Map();
   }
@@ -46,24 +52,78 @@ class ScraperController {
    */
   getScrapersStatus() {
     const stats = this.scraper.getStats();
-    const sources = this.scraper.sources.map((source, index) => {
-      const isActive = this.activeScrapers.has(source.name);
+    const adzunaStats = this.adzunaScraper.getStats();
+    const linkedinStats = this.linkedinScraper.getStats();
+    const glassdoorStats = this.glassdoorScraper.getStats();
+    
+    // Get AfricanJobScraper sources
+    const africanSources = this.scraper.sources.map((source, index) => {
+      const scraperState = this.activeScrapers.get(source.name);
+      const isActive = scraperState && scraperState.status === 'running';
+      
       return {
         id: (index + 1).toString(),
         name: `${source.name} Scraper`,
-        status: isActive ? 'running' : (stats.isRunning ? 'running' : 'stopped'),
-        lastRun: new Date().toISOString(),
+        status: isActive ? 'running' : 'stopped',
+        lastRun: scraperState?.lastRun || new Date().toISOString(),
         nextRun: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        jobsCollected: Math.floor(Math.random() * 100) + 50,
-        errors: 0,
+        jobsCollected: scraperState?.jobsCollected || Math.floor(Math.random() * 100) + 50,
+        errors: scraperState?.errors || 0,
         country: source.country,
         enabled: source.enabled,
-        successRate: Math.floor(Math.random() * 20) + 80, // 80-100%
-        avgDuration: Math.floor(Math.random() * 30) + 10 // 10-40 seconds
+        successRate: scraperState?.successRate || Math.floor(Math.random() * 20) + 80,
+        avgDuration: scraperState?.avgDuration || Math.floor(Math.random() * 30) + 10
       };
     });
 
-    return sources;
+    // Add API scrapers
+    const adzunaState = this.activeScrapers.get('adzuna');
+    const linkedinState = this.activeScrapers.get('linkedin');
+    const glassdoorState = this.activeScrapers.get('glassdoor');
+    
+    const apiSources = [
+      {
+        id: (this.scraper.sources.length + 1).toString(),
+        name: 'Adzuna API Scraper',
+        status: adzunaState?.status === 'running' ? 'running' : (adzunaStats.isRunning ? 'running' : 'stopped'),
+        lastRun: adzunaState?.lastRun || new Date().toISOString(),
+        nextRun: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        jobsCollected: adzunaState?.jobsCollected || adzunaStats.totalJobs,
+        errors: adzunaState?.errors || 0,
+        country: 'Multiple',
+        enabled: true,
+        successRate: adzunaState?.successRate || 95,
+        avgDuration: adzunaState?.avgDuration || 45
+      },
+      {
+        id: (this.scraper.sources.length + 2).toString(),
+        name: 'LinkedIn API Scraper',
+        status: linkedinState?.status === 'running' ? 'running' : (linkedinStats.isRunning ? 'running' : 'stopped'),
+        lastRun: linkedinState?.lastRun || new Date().toISOString(),
+        nextRun: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        jobsCollected: linkedinState?.jobsCollected || linkedinStats.totalJobs,
+        errors: linkedinState?.errors || 0,
+        country: 'Multiple',
+        enabled: true,
+        successRate: linkedinState?.successRate || 92,
+        avgDuration: linkedinState?.avgDuration || 60
+      },
+      {
+        id: (this.scraper.sources.length + 3).toString(),
+        name: 'Glassdoor API Scraper',
+        status: glassdoorState?.status === 'running' ? 'running' : (glassdoorStats.isRunning ? 'running' : 'stopped'),
+        lastRun: glassdoorState?.lastRun || new Date().toISOString(),
+        nextRun: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        jobsCollected: glassdoorState?.jobsCollected || glassdoorStats.totalJobs,
+        errors: glassdoorState?.errors || 0,
+        country: 'Multiple',
+        enabled: true,
+        successRate: glassdoorState?.successRate || 88,
+        avgDuration: glassdoorState?.avgDuration || 55
+      }
+    ];
+
+    return [...africanSources, ...apiSources];
   }
 
   /**
@@ -72,6 +132,17 @@ class ScraperController {
   async startScraper(scraperId) {
     try {
       const index = parseInt(scraperId) - 1;
+      
+      // Check if it's an API scraper
+      if (index === this.scraper.sources.length) {
+        return await this.startAdzunaScraper();
+      } else if (index === this.scraper.sources.length + 1) {
+        return await this.startLinkedInScraper();
+      } else if (index === this.scraper.sources.length + 2) {
+        return await this.startGlassdoorScraper();
+      }
+      
+      // Handle AfricanJobScraper sources
       const source = this.scraper.sources[index];
       
       if (!source) {
@@ -81,7 +152,8 @@ class ScraperController {
         };
       }
 
-      if (this.activeScrapers.has(source.name)) {
+      const existingState = this.activeScrapers.get(source.name);
+      if (existingState && existingState.status === 'running') {
         return {
           success: false,
           message: `Scraper ${source.name} is already running`
@@ -91,37 +163,114 @@ class ScraperController {
       // Mark scraper as active
       this.activeScrapers.set(source.name, {
         startTime: new Date(),
-        status: 'running'
+        status: 'running',
+        lastRun: new Date().toISOString(),
+        jobsCollected: existingState?.jobsCollected || 0,
+        errors: existingState?.errors || 0,
+        successRate: existingState?.successRate || 95,
+        avgDuration: existingState?.avgDuration || 20
       });
 
-      console.log(`🚀 Starting ${source.name} scraper...`);
-      
-      // Scrape specific source
-      const results = await this.scraper.scrapeSource(source);
-      
-      // Clear active status
-      this.activeScrapers.delete(source.name);
-      
-      return {
-        success: true,
-        message: `Scraper ${source.name} completed successfully`,
-        results: {
-          jobsFound: results.length,
-          jobsSaved: results.length,
-          successRate: 100
-        }
-      };
-    } catch (error) {
-      // Clear active status on error
-      const index = parseInt(scraperId) - 1;
-      const source = this.scraper.sources[index];
-      if (source) {
-        this.activeScrapers.delete(source.name);
+      try {
+        // Scrape the specific source
+        const results = await this.scraper.scrapeSource(source);
+        
+        // Update scraper state with results
+        const currentState = this.activeScrapers.get(source.name);
+        this.activeScrapers.set(source.name, {
+          ...currentState,
+          status: 'stopped',
+          jobsCollected: (currentState?.jobsCollected || 0) + results.length,
+          successRate: results.length > 0 ? 95 : 70,
+          avgDuration: Math.round((new Date() - currentState.startTime) / 1000)
+        });
+
+        return {
+          success: true,
+          message: `Scraper ${source.name} started and completed successfully`,
+          results: {
+            jobsFound: results.length,
+            duration: Math.round((new Date() - currentState.startTime) / 1000)
+          }
+        };
+      } catch (error) {
+        // Update scraper state with error
+        const currentState = this.activeScrapers.get(source.name);
+        this.activeScrapers.set(source.name, {
+          ...currentState,
+          status: 'error',
+          errors: (currentState?.errors || 0) + 1,
+          successRate: Math.max(0, (currentState?.successRate || 95) - 10)
+        });
+
+        throw error;
       }
-      
+    } catch (error) {
+      console.error('Start scraper error:', error);
       return {
         success: false,
         message: `Failed to start scraper ${scraperId}`,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Start Adzuna scraper
+   */
+  async startAdzunaScraper() {
+    try {
+      const existingState = this.activeScrapers.get('adzuna');
+      if (existingState && existingState.status === 'running') {
+        return {
+          success: false,
+          message: 'Adzuna scraper is already running'
+        };
+      }
+
+      // Mark Adzuna scraper as active
+      this.activeScrapers.set('adzuna', {
+        startTime: new Date(),
+        status: 'running',
+        lastRun: new Date().toISOString(),
+        jobsCollected: existingState?.jobsCollected || 0,
+        errors: existingState?.errors || 0,
+        successRate: existingState?.successRate || 95,
+        avgDuration: existingState?.avgDuration || 45
+      });
+
+      // Start scraping in background
+      this.adzunaScraper.startScraping().then(results => {
+        const currentState = this.activeScrapers.get('adzuna');
+        this.activeScrapers.set('adzuna', {
+          ...currentState,
+          status: 'stopped',
+          jobsCollected: (currentState?.jobsCollected || 0) + results.length,
+          successRate: results.length > 0 ? 95 : 70,
+          avgDuration: Math.round((new Date() - currentState.startTime) / 1000)
+        });
+      }).catch(error => {
+        const currentState = this.activeScrapers.get('adzuna');
+        this.activeScrapers.set('adzuna', {
+          ...currentState,
+          status: 'error',
+          errors: (currentState?.errors || 0) + 1,
+          successRate: Math.max(0, (currentState?.successRate || 95) - 10)
+        });
+      });
+
+      return {
+        success: true,
+        message: 'Adzuna scraper started successfully',
+        results: {
+          countries: this.adzunaScraper.africanCountries.length
+        }
+      };
+    } catch (error) {
+      console.error('Start Adzuna scraper error:', error);
+      return {
+        success: false,
+        message: 'Failed to start Adzuna scraper',
         error: error.message
       };
     }
@@ -133,6 +282,13 @@ class ScraperController {
   async stopScraper(scraperId) {
     try {
       const index = parseInt(scraperId) - 1;
+      
+      // Check if it's the Adzuna scraper (last scraper)
+      if (index === this.scraper.sources.length) {
+        return await this.stopAdzunaScraper();
+      }
+      
+      // Handle AfricanJobScraper sources
       const source = this.scraper.sources[index];
       
       if (!source) {
@@ -142,26 +298,189 @@ class ScraperController {
         };
       }
 
-      if (!this.activeScrapers.has(source.name)) {
+      const currentState = this.activeScrapers.get(source.name);
+      if (!currentState || currentState.status !== 'running') {
         return {
           success: false,
           message: `Scraper ${source.name} is not running`
         };
       }
 
-      // Remove from active scrapers (this will stop the scraper)
-      this.activeScrapers.delete(source.name);
-      
-      console.log(`⏹️ Stopped ${source.name} scraper`);
-      
+      // Update scraper state to stopped
+      this.activeScrapers.set(source.name, {
+        ...currentState,
+        status: 'stopped',
+        avgDuration: Math.round((new Date() - currentState.startTime) / 1000)
+      });
+
       return {
         success: true,
         message: `Scraper ${source.name} stopped successfully`
       };
     } catch (error) {
+      console.error('Stop scraper error:', error);
       return {
         success: false,
         message: `Failed to stop scraper ${scraperId}`,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Start LinkedIn scraper
+   */
+  async startLinkedInScraper() {
+    try {
+      const existingState = this.activeScrapers.get('linkedin');
+      if (existingState && existingState.status === 'running') {
+        return {
+          success: false,
+          message: 'LinkedIn scraper is already running'
+        };
+      }
+
+      // Mark LinkedIn scraper as active
+      this.activeScrapers.set('linkedin', {
+        startTime: new Date(),
+        status: 'running',
+        lastRun: new Date().toISOString(),
+        jobsCollected: existingState?.jobsCollected || 0,
+        errors: existingState?.errors || 0,
+        successRate: existingState?.successRate || 92,
+        avgDuration: existingState?.avgDuration || 60
+      });
+
+      // Start scraping in background
+      this.linkedinScraper.startScraping().then(results => {
+        const currentState = this.activeScrapers.get('linkedin');
+        this.activeScrapers.set('linkedin', {
+          ...currentState,
+          status: 'stopped',
+          jobsCollected: (currentState?.jobsCollected || 0) + results.length,
+          successRate: results.length > 0 ? 92 : 70,
+          avgDuration: Math.round((new Date() - currentState.startTime) / 1000)
+        });
+      }).catch(error => {
+        const currentState = this.activeScrapers.get('linkedin');
+        this.activeScrapers.set('linkedin', {
+          ...currentState,
+          status: 'error',
+          errors: (currentState?.errors || 0) + 1,
+          successRate: Math.max(0, (currentState?.successRate || 92) - 10)
+        });
+      });
+
+      return {
+        success: true,
+        message: 'LinkedIn scraper started successfully',
+        results: {
+          companies: this.linkedinScraper.africanCompanies.length
+        }
+      };
+    } catch (error) {
+      console.error('Start LinkedIn scraper error:', error);
+      return {
+        success: false,
+        message: 'Failed to start LinkedIn scraper',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Start Glassdoor scraper
+   */
+  async startGlassdoorScraper() {
+    try {
+      const existingState = this.activeScrapers.get('glassdoor');
+      if (existingState && existingState.status === 'running') {
+        return {
+          success: false,
+          message: 'Glassdoor scraper is already running'
+        };
+      }
+
+      // Mark Glassdoor scraper as active
+      this.activeScrapers.set('glassdoor', {
+        startTime: new Date(),
+        status: 'running',
+        lastRun: new Date().toISOString(),
+        jobsCollected: existingState?.jobsCollected || 0,
+        errors: existingState?.errors || 0,
+        successRate: existingState?.successRate || 88,
+        avgDuration: existingState?.avgDuration || 55
+      });
+
+      // Start scraping in background
+      this.glassdoorScraper.startScraping().then(results => {
+        const currentState = this.activeScrapers.get('glassdoor');
+        this.activeScrapers.set('glassdoor', {
+          ...currentState,
+          status: 'stopped',
+          jobsCollected: (currentState?.jobsCollected || 0) + results.length,
+          successRate: results.length > 0 ? 88 : 70,
+          avgDuration: Math.round((new Date() - currentState.startTime) / 1000)
+        });
+      }).catch(error => {
+        const currentState = this.activeScrapers.get('glassdoor');
+        this.activeScrapers.set('glassdoor', {
+          ...currentState,
+          status: 'error',
+          errors: (currentState?.errors || 0) + 1,
+          successRate: Math.max(0, (currentState?.successRate || 88) - 10)
+        });
+      });
+
+      return {
+        success: true,
+        message: 'Glassdoor scraper started successfully',
+        results: {
+          companies: this.glassdoorScraper.africanCompanies.length
+        }
+      };
+    } catch (error) {
+      console.error('Start Glassdoor scraper error:', error);
+      return {
+        success: false,
+        message: 'Failed to start Glassdoor scraper',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Stop Adzuna scraper
+   */
+  async stopAdzunaScraper() {
+    try {
+      const currentState = this.activeScrapers.get('adzuna');
+      if (!currentState || currentState.status !== 'running') {
+        return {
+          success: false,
+          message: 'Adzuna scraper is not running'
+        };
+      }
+
+      // Stop Adzuna scraper
+      this.adzunaScraper.stopScraping();
+
+      // Update scraper state to stopped
+      this.activeScrapers.set('adzuna', {
+        ...currentState,
+        status: 'stopped',
+        avgDuration: Math.round((new Date() - currentState.startTime) / 1000)
+      });
+
+      return {
+        success: true,
+        message: 'Adzuna scraper stopped successfully'
+      };
+    } catch (error) {
+      console.error('Stop Adzuna scraper error:', error);
+      return {
+        success: false,
+        message: 'Failed to stop Adzuna scraper',
         error: error.message
       };
     }

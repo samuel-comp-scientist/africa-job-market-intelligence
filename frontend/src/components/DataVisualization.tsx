@@ -26,7 +26,6 @@ import {
   Users
 } from 'lucide-react';
 
-const { TabPane } = Tabs;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
@@ -53,7 +52,7 @@ const DataVisualization: React.FC = () => {
   const [scrapingStats, setScrapingStats] = useState<ScrapingStats | null>(null);
   const [timeframe, setTimeframe] = useState('30');
   const [activeTab, setActiveTab] = useState('overview');
-  const [jobDetails, setJobDetails] = useState([]);
+  const [jobDetails, setJobDetails] = useState<Array<any>>([]);
   const [jobDetailsLoading, setJobDetailsLoading] = useState(false);
   const token = localStorage.getItem('token');
 
@@ -67,13 +66,24 @@ const DataVisualization: React.FC = () => {
   const fetchVisualizationData = async () => {
     setLoading(true);
     try {
+      console.log('🔄 Fetching visualization data with timeframe:', timeframe);
+      console.log('🔑 Using token:', token ? 'Present' : 'Missing');
+      
       const response = await fetch(`/api/visualization/job-stats?timeframe=${timeframe}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      console.log('📡 Response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      console.log('📊 Received data:', data);
       setJobStats(data);
     } catch (error) {
-      console.error('Failed to fetch visualization data:', error);
+      console.error('❌ Failed to fetch visualization data:', error);
     }
     setLoading(false);
   };
@@ -94,8 +104,8 @@ const DataVisualization: React.FC = () => {
     setJobDetailsLoading(true);
     try {
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value) params.append(key, value);
+      Object.entries(filters).forEach(([key, value]: [string, any]) => {
+        if (value) params.append(key, String(value));
       });
 
       const response = await fetch(`/api/visualization/job-details?${params}`, {
@@ -157,7 +167,7 @@ const DataVisualization: React.FC = () => {
       dataIndex: 'avgSalary',
       key: 'avgSalary',
       sorter: (a: number, b: number) => b - a,
-      render: (salary: number) => <span>${Math.round(salary).toLocaleString()}</span>
+      render: (salary: number) => <span>$ {Math.round(salary).toLocaleString()}</span>
     }
   ];
 
@@ -181,8 +191,8 @@ const DataVisualization: React.FC = () => {
     {
       title: 'Salary Range',
       key: 'salary',
-      render: (_, record: any) => (
-        <span>${record.salaryMin.toLocaleString()} - ${record.salaryMax.toLocaleString()}</span>
+      render: (_: any, record: any) => (
+        <span>$ {record.salaryMin.toLocaleString()} - $ {record.salaryMax.toLocaleString()}</span>
       )
     },
     {
@@ -197,7 +207,7 @@ const DataVisualization: React.FC = () => {
       key: 'skills',
       render: (skills: string[]) => (
         <div>
-          {skills.slice(0, 3).map((skill, index) => (
+          {skills.slice(0, 3).map((skill: string, index: number) => (
             <Tag key={index} style={{ marginBottom: 4 }}>{skill}</Tag>
           ))}
           {skills.length > 3 && <Tag>+{skills.length - 3}</Tag>}
@@ -209,13 +219,13 @@ const DataVisualization: React.FC = () => {
   if (loading && !jobStats) {
     return (
       <div style={{ textAlign: 'center', padding: '100px' }}>
-        <Spin size="large" tip="Loading visualization data..." />
+        <Spin size="large" description="Loading visualization data..." />
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '24px', background: '#f5f5f5' }}>
+    <div style={{ padding: '24px' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px' }}>
           📊 Data Visualization Dashboard
@@ -261,225 +271,253 @@ const DataVisualization: React.FC = () => {
         </Col>
       </Row>
 
-      <Tabs activeKey={activeTab} onChange={setActiveTab}>
-        <TabPane tab="📈 Overview" key="overview">
-          <Row gutter={[16, 16]}>
-            {/* Jobs by Country */}
-            <Col span={12}>
-              <Card title="🌍 Jobs by Country" style={{ height: '400px' }}>
-                <BarChart width={500} height={300} data={jobStats?.jobsByCountry || []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="_id" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#8884d8" />
-                </BarChart>
-              </Card>
-            </Col>
+      <Tabs 
+        activeKey={activeTab} 
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'overview',
+            label: '📈 Overview',
+            children: (
+              <Row gutter={[16, 16]}>
+                {/* Jobs by Country */}
+                <Col span={12}>
+                  <Card title="🌍 Jobs by Country" style={{ height: '400px' }}>
+                    <BarChart width={500} height={300} data={jobStats?.jobsByCountry || []}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="_id" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="count" fill="#8884d8" />
+                    </BarChart>
+                  </Card>
+                </Col>
 
-            {/* Jobs by Skill */}
-            <Col span={12}>
-              <Card title="💻 Top Skills" style={{ height: '400px' }}>
-                <BarChart width={500} height={300} data={jobStats?.jobsBySkill?.slice(0, 10) || []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="_id" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#82ca9d" />
-                </BarChart>
-              </Card>
-            </Col>
+                {/* Jobs by Skill */}
+                <Col span={12}>
+                  <Card title="💻 Top Skills" style={{ height: '400px' }}>
+                    <BarChart width={500} height={300} data={jobStats?.jobsBySkill?.slice(0, 10) || []}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="_id" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="count" fill="#82ca9d" />
+                    </BarChart>
+                  </Card>
+                </Col>
 
-            {/* Salary Distribution */}
-            <Col span={12}>
-              <Card title="💰 Salary Distribution" style={{ height: '400px' }}>
-                <PieChart width={500} height={300}>
-                  <Pie
-                    data={jobStats?.salaryDistribution?.map((item, index) => ({
-                      name: item._id,
-                      value: item.count,
-                      fill: COLORS[index % COLORS.length]
-                    })) || []}
-                    cx={250}
-                    cy={150}
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                {/* Salary Distribution */}
+                <Col span={12}>
+                  <Card title="💰 Salary Distribution" style={{ height: '400px' }}>
+                    <PieChart width={500} height={300}>
+                      <Pie
+                        data={jobStats?.salaryDistribution?.map((item: any, index: number) => ({
+                          name: item._id,
+                          value: item.count,
+                          fill: COLORS[index % COLORS.length]
+                        })) || []}
+                        cx={250}
+                        cy={150}
+                        labelLine={false}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        label={(entry: any) => entry.name + ' ' + Math.round(entry.percent * 100) + '%'}
+                      >
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </Card>
+                </Col>
+
+                {/* Job Types */}
+                <Col span={12}>
+                  <Card title="📋 Job Types" style={{ height: '400px' }}>
+                    <PieChart width={500} height={300}>
+                      <Pie
+                        data={jobStats?.jobsByType?.map((item: any, index: number) => ({
+                          name: item._id,
+                          value: item.count,
+                          fill: COLORS[index % COLORS.length]
+                        })) || []}
+                        cx={250}
+                        cy={150}
+                        labelLine={false}
+                        outerRadius={80}
+                        label={(entry: any) => entry.name + ' ' + Math.round(entry.percent * 100) + '%'}
+                      >
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </Card>
+                </Col>
+
+                {/* Daily Trend */}
+                <Col span={24}>
+                  <Card title="📅 Daily Job Postings Trend" style={{ height: '400px' }}>
+                    {jobStats?.dailyTrend && jobStats.dailyTrend.length > 0 ? (
+                      <LineChart width={1000} height={300} data={jobStats.dailyTrend.map(item => ({
+                        date: new Date(item._id.year, item._id.month - 1, item._id.day).toLocaleDateString(),
+                        count: item.count,
+                        originalDate: item._id
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis 
+                          dataKey="date" 
+                          tick={{ fontSize: 12 }}
+                          angle={-45}
+                          textAnchor="end"
+                          height={60}
+                        />
+                        <YAxis />
+                        <Tooltip />
+                        <Line 
+                          type="monotone" 
+                          dataKey="count" 
+                          stroke="#8884d8" 
+                          strokeWidth={3}
+                          dot={{ fill: '#8884d8', strokeWidth: 2, r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '50px' }}>
+                        <p>No daily trend data available</p>
+                        <p>Expected {jobStats?.dailyTrend?.length || 0} data points</p>
+                      </div>
+                    )}
+                  </Card>
+                </Col>
+              </Row>
+            )
+          },
+          {
+            key: 'companies',
+            label: '🏢 Top Companies',
+            children: (
+              <Row gutter={[16, 16]}>
+                <Col span={24}>
+                  <Card title="🏢 Top Hiring Companies">
+                    <Table
+                      columns={countryColumns}
+                      dataSource={jobStats?.topCompanies?.map((item: any, index: number) => ({
+                        ...item,
+                        key: index
+                      })) || []}
+                      pagination={false}
+                      size="small"
+                    />
+                  </Card>
+                </Col>
+              </Row>
+            )
+          },
+          {
+            key: 'scraping',
+            label: '🤖 Scraping Statistics',
+            children: (
+              <Row gutter={[16, 16]}>
+                <Col span={6}>
+                  <Card>
+                    <div style={{ textAlign: 'center' }}>
+                      <h3 style={{ color: '#1890ff', fontSize: '32px', fontWeight: 'bold' }}>
+                        {scrapingStats?.recentJobs || 0}
+                      </h3>
+                      <p style={{ color: '#666' }}>Jobs (24h)</p>
+                      <Users style={{ fontSize: '48px', color: '#ccc' }} />
+                    </div>
+                  </Card>
+                </Col>
+                <Col span={6}>
+                  <Card>
+                    <div style={{ textAlign: 'center' }}>
+                      <h3 style={{ color: '#52c41a', fontSize: '32px', fontWeight: 'bold' }}>
+                        {scrapingStats?.weeklyJobs || 0}
+                      </h3>
+                      <p style={{ color: '#666' }}>Jobs (7 days)</p>
+                      <Calendar style={{ fontSize: '48px', color: '#ccc' }} />
+                    </div>
+                  </Card>
+                </Col>
+                <Col span={12}>
+                  <Card title="📊 Source Performance">
+                    <Table
+                      columns={[
+                        {
+                          title: 'Source',
+                          dataIndex: '_id',
+                          key: 'source',
+                          render: (source: string) => <span style={{ fontWeight: 'bold' }}>{source}</span>
+                        },
+                        {
+                          title: 'Total Jobs',
+                          dataIndex: 'total',
+                          key: 'total',
+                          render: (total: number) => <span style={{ color: '#1890ff' }}>{total.toLocaleString()}</span>
+                        },
+                        {
+                          title: 'Active Jobs',
+                          dataIndex: 'active',
+                          key: 'active',
+                          render: (active: number) => <span style={{ color: '#52c41a' }}>{active.toLocaleString()}</span>
+                        },
+                        {
+                          title: 'Success Rate',
+                          dataIndex: 'successRate',
+                          key: 'successRate',
+                          render: (rate: number) => (
+                            <span style={{ color: rate > 80 ? '#52c41a' : '#faad14' }}>
+                              {rate.toFixed(1)}%
+                            </span>
+                          )
+                        }
+                      ]}
+                      dataSource={scrapingStats?.sourceStats?.map((item: any, index: number) => ({
+                        ...item,
+                        key: index
+                      })) || []}
+                      pagination={false}
+                      size="small"
+                    />
+                  </Card>
+                </Col>
+              </Row>
+            )
+          },
+          {
+            key: 'details',
+            label: '📋 Job Details',
+            children: (
+              <Card 
+                title="📋 Detailed Job Listings" 
+                extra={
+                  <Button 
+                    type="primary" 
+                    onClick={() => fetchJobDetails()}
+                    loading={jobDetailsLoading}
                   >
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </Card>
-            </Col>
-
-            {/* Job Types */}
-            <Col span={12}>
-              <Card title="📋 Job Types" style={{ height: '400px' }}>
-                <PieChart width={500} height={300}>
-                  <Pie
-                    data={jobStats?.jobsByType?.map((item, index) => ({
-                      name: item._id,
-                      value: item.count,
-                      fill: COLORS[index % COLORS.length]
-                    })) || []}
-                    cx={250}
-                    cy={150}
-                    labelLine={false}
-                    outerRadius={80}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  >
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </Card>
-            </Col>
-
-            {/* Daily Trend */}
-            <Col span={24}>
-              <Card title="📅 Daily Job Postings Trend" style={{ height: '400px' }}>
-                <LineChart width={1000} height={300} data={jobStats?.dailyTrend || []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="_id" 
-                    tickFormatter={(value) => {
-                      const date = new Date(value.year, value.month - 1, value.day);
-                      return date.toLocaleDateString();
-                    }}
-                  />
-                  <YAxis />
-                  <Tooltip 
-                    labelFormatter={(value) => [`${value} jobs`, 'Date']}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="count" 
-                    stroke="#8884d8" 
-                    strokeWidth={2}
-                  />
-                </LineChart>
-              </Card>
-            </Col>
-          </Row>
-        </TabPane>
-
-        <TabPane tab="🏢 Top Companies" key="companies">
-          <Row gutter={[16, 16]}>
-            <Col span={24}>
-              <Card title="🏢 Top Hiring Companies">
-                <Table
-                  columns={countryColumns}
-                  dataSource={jobStats?.topCompanies?.map((item, index) => ({
-                    ...item,
-                    key: index
-                  })) || []}
-                  pagination={false}
-                  size="small"
-                />
-              </Card>
-            </Col>
-          </Row>
-        </TabPane>
-
-        <TabPane tab="🤖 Scraping Statistics" key="scraping">
-          <Row gutter={[16, 16]}>
-            <Col span={6}>
-              <Card>
-                <div style={{ textAlign: 'center' }}>
-                  <h3 style={{ color: '#1890ff', fontSize: '32px', fontWeight: 'bold' }}>
-                    {scrapingStats?.recentJobs || 0}
-                  </h3>
-                  <p style={{ color: '#666' }}>Jobs (24h)</p>
-                  <Users style={{ fontSize: '48px', color: '#ccc' }} />
-                </div>
-              </Card>
-            </Col>
-            <Col span={6}>
-              <Card>
-                <div style={{ textAlign: 'center' }}>
-                  <h3 style={{ color: '#52c41a', fontSize: '32px', fontWeight: 'bold' }}>
-                    {scrapingStats?.weeklyJobs || 0}
-                  </h3>
-                  <p style={{ color: '#666' }}>Jobs (7 days)</p>
-                  <Calendar style={{ fontSize: '48px', color: '#ccc' }} />
-                </div>
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card title="📊 Source Performance">
-                <Table
-                  columns={[
-                    {
-                      title: 'Source',
-                      dataIndex: '_id',
-                      key: 'source',
-                      render: (source: string) => <span style={{ fontWeight: 'bold' }}>{source}</span>
-                    },
-                    {
-                      title: 'Total Jobs',
-                      dataIndex: 'total',
-                      key: 'total',
-                      render: (total: number) => <span style={{ color: '#1890ff' }}>{total.toLocaleString()}</span>
-                    },
-                    {
-                      title: 'Active Jobs',
-                      dataIndex: 'active',
-                      key: 'active',
-                      render: (active: number) => <span style={{ color: '#52c41a' }}>{active.toLocaleString()}</span>
-                    },
-                    {
-                      title: 'Success Rate',
-                      dataIndex: 'successRate',
-                      key: 'successRate',
-                      render: (rate: number) => (
-                        <span style={{ color: rate > 80 ? '#52c41a' : '#faad14' }}>
-                          {rate.toFixed(1)}%
-                        </span>
-                      )
-                    }
-                  ]}
-                  dataSource={scrapingStats?.sourceStats?.map((item, index) => ({
-                    ...item,
-                    key: index
-                  })) || []}
-                  pagination={false}
-                  size="small"
-                />
-              </Card>
-            </Col>
-          </Row>
-        </TabPane>
-
-        <TabPane tab="📋 Job Details" key="details">
-          <Card 
-            title="📋 Detailed Job Listings" 
-            extra={
-              <Button 
-                type="primary" 
-                onClick={() => fetchJobDetails()}
-                loading={jobDetailsLoading}
+                    Refresh Data
+                  </Button>
+                }
               >
-                Refresh Data
-              </Button>
-            }
-          >
-            <Table
-              columns={jobColumns}
-              dataSource={jobDetails.map((job, index) => ({
-                ...job,
-                key: index
-              }))}
-              loading={jobDetailsLoading}
-              pagination={{
-                pageSize: 20,
-                showSizeChanger: true,
-                showQuickJumper: true
-              }}
-              scroll={{ x: 1200 }}
-            />
-          </Card>
-        </TabPane>
-      </Tabs>
+                <Table
+                  columns={jobColumns}
+                  dataSource={jobDetails.map((job: any, index: number) => ({
+                    ...job,
+                    key: index
+                  }))}
+                  loading={jobDetailsLoading}
+                  pagination={{
+                    pageSize: 20,
+                    showSizeChanger: true,
+                    showQuickJumper: true
+                  }}
+                  scroll={{ x: 1200 }}
+                />
+              </Card>
+            )
+          }
+        ]}
+      />
     </div>
   );
 };

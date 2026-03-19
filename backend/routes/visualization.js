@@ -25,7 +25,7 @@ router.get('/job-stats', authenticate, requireAdmin, async (req, res) => {
         $group: {
           _id: '$country',
           count: { $sum: 1 },
-          avgSalary: { $avg: ['$salaryMin', '$salaryMax'] }
+          avgSalary: { $avg: { $avg: ['$salaryMin', '$salaryMax'] } }
         }
       },
       { $sort: { count: -1 } },
@@ -55,7 +55,8 @@ router.get('/job-stats', authenticate, requireAdmin, async (req, res) => {
           count: { $sum: 1 }
         }
       },
-      { $sort: { count: -1 } }
+      { $sort: { count: -1 } },
+      { $limit: 10 }
     ]);
 
     // Jobs by experience level
@@ -76,11 +77,28 @@ router.get('/job-stats', authenticate, requireAdmin, async (req, res) => {
       {
         $bucket: {
           groupBy: '$salaryMin',
-          boundaries: [0, 1000, 2000, 3000, 4000, 5000],
-          default: '5000+',
+          boundaries: [0, 100000, 500000, 1000000, 2000000, 4000000],
+          default: '4000000+',
           output: {
             count: { $sum: 1 }
           }
+        }
+      },
+      {
+        $project: {
+          _id: { 
+            $switch: {
+              branches: [
+                { case: { $eq: ['$_id', 0] }, then: '0-100K' },
+                { case: { $eq: ['$_id', 100000] }, then: '100K-500K' },
+                { case: { $eq: ['$_id', 500000] }, then: '500K-1M' },
+                { case: { $eq: ['$_id', 1000000] }, then: '1M-2M' },
+                { case: { $eq: ['$_id', 2000000] }, then: '2M-4M' }
+              ],
+              default: '4M+'
+            }
+          },
+          count: '$count'
         }
       }
     ]);
@@ -108,7 +126,7 @@ router.get('/job-stats', authenticate, requireAdmin, async (req, res) => {
         $group: {
           _id: '$company',
           count: { $sum: 1 },
-          avgSalary: { $avg: ['$salaryMin', '$salaryMax'] }
+          avgSalary: { $avg: { $avg: ['$salaryMin', '$salaryMax'] } }
         }
       },
       { $sort: { count: -1 } },
@@ -126,6 +144,15 @@ router.get('/job-stats', authenticate, requireAdmin, async (req, res) => {
       timeframe: parseInt(timeframe),
       generatedAt: new Date()
     });
+    
+    // Debug logging
+    console.log('📊 Visualization Data Summary:');
+    console.log('- Jobs by Country:', jobsByCountry.length, 'items');
+    console.log('- Jobs by Skill:', jobsBySkill.length, 'items');
+    console.log('- Jobs by Type:', jobsByType.length, 'items');
+    console.log('- Salary Distribution:', salaryDistribution.length, 'items');
+    console.log('- Daily Trend:', dailyTrend.length, 'items');
+    console.log('- Top Companies:', topCompanies.length, 'items');
 
   } catch (error) {
     console.error('Visualization stats error:', error);
@@ -283,5 +310,164 @@ router.get('/scraping-stats', authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch scraping stats' });
   }
 });
+
+// Get Adzuna market insights
+router.get('/adzuna-insights', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const AdzunaScraper = require('../scrapers/AdzunaScraper');
+    const adzunaScraper = new AdzunaScraper();
+    
+    const insights = await adzunaScraper.getMarketInsights();
+    
+    res.json({
+      insights,
+      generatedAt: new Date()
+    });
+
+  } catch (error) {
+    console.error('Adzuna insights error:', error);
+    res.status(500).json({ error: 'Failed to fetch Adzuna insights' });
+  }
+});
+
+// Get salary trends by country
+router.get('/salary-trends/:countryCode', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { countryCode } = req.params;
+    const AdzunaScraper = require('../scrapers/AdzunaScraper');
+    const adzunaScraper = new AdzunaScraper();
+    
+    const trends = await adzunaScraper.getSalaryTrends(countryCode);
+    
+    res.json({
+      countryCode,
+      trends,
+      generatedAt: new Date()
+    });
+
+  } catch (error) {
+    console.error('Salary trends error:', error);
+    res.status(500).json({ error: 'Failed to fetch salary trends' });
+  }
+});
+
+// Get LinkedIn market insights
+router.get('/linkedin-insights', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const LinkedInScraper = require('../scrapers/LinkedInScraper');
+    const linkedinScraper = new LinkedInScraper();
+    
+    const insights = await linkedinScraper.getMarketInsights();
+    
+    res.json({
+      insights,
+      generatedAt: new Date()
+    });
+
+  } catch (error) {
+    console.error('LinkedIn insights error:', error);
+    res.status(500).json({ error: 'Failed to fetch LinkedIn insights' });
+  }
+});
+
+// Get Glassdoor market insights
+router.get('/glassdoor-insights', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const GlassdoorScraper = require('../scrapers/GlassdoorScraper');
+    const glassdoorScraper = new GlassdoorScraper();
+    
+    const insights = await glassdoorScraper.getMarketInsights();
+    
+    res.json({
+      insights,
+      generatedAt: new Date()
+    });
+
+  } catch (error) {
+    console.error('Glassdoor insights error:', error);
+    res.status(500).json({ error: 'Failed to fetch Glassdoor insights' });
+  }
+});
+
+// Get comprehensive market insights from all sources
+router.get('/comprehensive-insights', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const AdzunaScraper = require('../scrapers/AdzunaScraper');
+    const LinkedInScraper = require('../scrapers/LinkedInScraper');
+    const GlassdoorScraper = require('../scrapers/GlassdoorScraper');
+    
+    const [adzunaInsights, linkedinInsights, glassdoorInsights] = await Promise.all([
+      new AdzunaScraper().getMarketInsights(),
+      new LinkedInScraper().getMarketInsights(),
+      new GlassdoorScraper().getMarketInsights()
+    ]);
+    
+    const comprehensive = {
+      totalJobs: (adzunaInsights?.totalJobs || 0) + (linkedinInsights?.totalJobs || 0) + (glassdoorInsights?.totalJobs || 0),
+      sources: {
+        adzuna: adzunaInsights || {},
+        linkedin: linkedinInsights || {},
+        glassdoor: glassdoorInsights || {}
+      },
+      combined: {
+        avgSalary: {
+          min: Math.round((adzunaInsights?.avgSalary?.min || 0 + linkedinInsights?.avgSalary?.min || 0 + glassdoorInsights?.avgSalary?.min || 0) / 3),
+          max: Math.round((adzunaInsights?.avgSalary?.max || 0 + linkedinInsights?.avgSalary?.max || 0 + glassdoorInsights?.avgSalary?.max || 0) / 3)
+        },
+        topSkills: this.combineSkills([adzunaInsights?.topSkills || [], linkedinInsights?.topSkills || [], glassdoorInsights?.topSkills || []]),
+        jobTypes: this.combineJobTypes([adzunaInsights?.jobTypes || [], linkedinInsights?.jobTypes || [], glassdoorInsights?.jobTypes || []]),
+        remoteJobs: (adzunaInsights?.remoteJobs || 0) + (linkedinInsights?.remoteJobs || 0) + (glassdoorInsights?.remoteJobs || 0)
+      }
+    };
+    
+    res.json({
+      comprehensive,
+      generatedAt: new Date()
+    });
+
+  } catch (error) {
+    console.error('Comprehensive insights error:', error);
+    res.status(500).json({ error: 'Failed to fetch comprehensive insights' });
+  }
+});
+
+// Helper function to combine skills from multiple sources
+function combineSkills(skillsArrays) {
+  const skillCounts = {};
+  
+  skillsArrays.forEach(skills => {
+    skills.forEach(skill => {
+      if (skillCounts[skill.skill]) {
+        skillCounts[skill.skill] += skill.count;
+      } else {
+        skillCounts[skill.skill] = skill.count;
+      }
+    });
+  });
+  
+  return Object.entries(skillCounts)
+    .map(([skill, count]) => ({ skill, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+}
+
+// Helper function to combine job types from multiple sources
+function combineJobTypes(jobTypesArrays) {
+  const typeCounts = {};
+  
+  jobTypesArrays.forEach(jobTypes => {
+    jobTypes.forEach(jobType => {
+      if (typeCounts[jobType.type]) {
+        typeCounts[jobType.type] += jobType.count;
+      } else {
+        typeCounts[jobType.type] = jobType.count;
+      }
+    });
+  });
+  
+  return Object.entries(typeCounts)
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => b.count - a.count);
+}
 
 module.exports = router;
