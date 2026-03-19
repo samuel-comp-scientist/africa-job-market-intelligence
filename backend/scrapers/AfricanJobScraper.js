@@ -27,6 +27,14 @@ class AfricanJobScraper {
     // Enhanced scraper sources with proper African job sites
     this.sources = [
       {
+        name: 'linkedin',
+        baseUrl: 'https://www.linkedin.com',
+        searchUrl: 'https://www.linkedin.com/jobs/search',
+        country: 'global',
+        enabled: true,
+        type: 'direct'
+      },
+      {
         name: 'jobberman',
         baseUrl: 'https://www.jobberman.com',
         searchUrl: 'https://www.jobberman.com/search',
@@ -133,6 +141,60 @@ class AfricanJobScraper {
     }
 
     return this.stats;
+  }
+
+  /**
+   * Process a single job before saving
+   */
+  async processJob(job, source) {
+    try {
+      // Validate required fields
+      if (!job.jobTitle || !job.company || !job.country) {
+        throw new Error('Missing required job fields');
+      }
+
+      // Clean and normalize data
+      const processedJob = {
+        jobTitle: job.jobTitle.trim(),
+        company: job.company.trim(),
+        country: job.country.trim(),
+        city: job.city ? job.city.trim() : 'Unknown',
+        description: job.description ? job.description.trim() : 'No description available',
+        requirements: job.requirements || [],
+        skills: job.skills || [],
+        salaryMin: job.salaryMin || 0,
+        salaryMax: job.salaryMax || 0,
+        currency: job.currency || 'USD',
+        jobType: job.jobType || 'Full-time',
+        experienceLevel: job.experienceLevel || 'Entry',
+        postedDate: job.postedDate || new Date().toISOString(),
+        source: source.name,
+        sourceUrl: job.sourceUrl || `${source.baseUrl}/job/default`,
+        isActive: job.isActive !== undefined ? job.isActive : true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Additional validation
+      if (processedJob.salaryMax < processedJob.salaryMin) {
+        processedJob.salaryMax = processedJob.salaryMin;
+      }
+
+      // Ensure skills is an array
+      if (!Array.isArray(processedJob.skills)) {
+        processedJob.skills = [processedJob.skills].filter(Boolean);
+      }
+
+      // Ensure requirements is an array
+      if (!Array.isArray(processedJob.requirements)) {
+        processedJob.requirements = [processedJob.requirements].filter(Boolean);
+      }
+
+      return processedJob;
+    } catch (error) {
+      console.error(`Error processing job: ${error.message}`);
+      throw error;
+    }
   }
 
   /**

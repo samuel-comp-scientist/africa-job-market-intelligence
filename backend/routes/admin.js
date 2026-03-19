@@ -3,9 +3,11 @@ const router = express.Router();
 const User = require('../models/User');
 const Job = require('../models/Job');
 const Company = require('../models/Company');
+const ScraperLog = require('../models/ScraperLog');
 const { authenticate } = require('../middleware/auth');
 const scraperController = require('../scrapers/scraperController');
 const scraperScheduler = require('../scrapers/scraperScheduler');
+const errorDetector = require('../scrapers/errorDetector');
 
 // Simple middleware that just checks if user is admin
 const requireAdmin = (req, res, next) => {
@@ -166,6 +168,40 @@ router.post('/scrapers/:id/stop', authenticate, requireAdmin, async (req, res) =
   } catch (error) {
     console.error('Stop scraper error:', error);
     res.status(500).json({ error: 'Failed to stop scraper' });
+  }
+});
+
+// Pause scraper
+router.post('/scrapers/:id/pause', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await scraperController.pauseScraper(id);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Pause scraper error:', error);
+    res.status(500).json({ error: 'Failed to pause scraper' });
+  }
+});
+
+// Resume scraper
+router.post('/scrapers/:id/resume', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await scraperController.resumeScraper(id);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Resume scraper error:', error);
+    res.status(500).json({ error: 'Failed to resume scraper' });
   }
 });
 
@@ -489,6 +525,410 @@ router.post('/scheduler/:name/stop', authenticate, requireAdmin, (req, res) => {
     console.error('Stop schedule error:', error);
     res.status(500).json({ error: 'Failed to stop schedule' });
   }
+});
+
+// Scraper Logs Management Routes
+
+// Get scraper logs with filtering
+router.get('/scraper/logs', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const {
+      source,
+      status,
+      startDate,
+      endDate,
+      limit = 50,
+      page = 1
+    } = req.query;
+
+    // Build query
+    const query = {};
+    if (source) query.source = source;
+    if (status) query.status = status;
+    if (startDate || endDate) {
+      query.startTime = {};
+      if (startDate) query.startTime.$gte = new Date(startDate);
+      if (endDate) query.startTime.$lte = new Date(endDate);
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const logs = await ScraperLog.find(query)
+      .sort({ startTime: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .select('source status startTime endTime duration jobsFound jobsSaved performance errors')
+      .lean();
+
+    const total = await ScraperLog.countDocuments(query);
+
+    res.json({
+      logs,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Get scraper logs error:', error);
+    res.status(500).json({ error: 'Failed to fetch scraper logs' });
+  }
+});
+
+// Get error analysis
+router.get('/scraper/errors/analysis', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    
+    // Get error trends
+    const errorAnalysis = await ScraperLog.getErrorAnalysis(days);
+    
+    // Get critical errors (last 24 hours)
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const criticalErrors = await ScraperLog.find({
+      startTime: { $gte: yesterday },
+      status: { $ne: 'success' },
+      'errors.0': { $exists: true }
+    })
+    .sort({ startTime: -1 })
+    .limit(10)
+    .select('source errors startTime')
+    .lean();
+
+    // Calculate error rate
+    const totalRuns = await ScraperLog.countDocuments({
+      startTime: { $gte: yesterday }
+    });
+    const failedRuns = await ScraperLog.countDocuments({
+      startTime: { $gte: yesterday },
+      status: { $ne: 'success' }
+    });
+    const errorRate = totalRuns > 0 ? (failedRuns / totalRuns * 100).toFixed(2) : 0;
+
+    res.json({
+      errorAnalysis,
+      criticalErrors: criticalErrors.map(log => ({
+        source: log.source,
+        message: log.errors[0]?.message || 'Unknown error',
+        timestamp: log.startTime
+      })),
+      errorRate: parseFloat(errorRate),
+      totalRuns,
+      failedRuns,
+      period: '24 hours'
+    });
+  } catch (error) {
+    console.error('Error analysis error:', error);
+    res.status(500).json({ error: 'Failed to analyze errors' });
+  }
+});
+
+// Export scraper logs
+router.get('/scraper/logs/export', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const {
+      source,
+      status,
+      startDate,
+      endDate
+    } = req.query;
+
+    // Build query
+    const query = {};
+    if (source) query.source = source;
+    if (status) query.status = status;
+    if (startDate || endDate) {
+      query.startTime = {};
+      if (startDate) query.startTime.$gte = new Date(startDate);
+      if (endDate) query.startTime.$lte = new Date(endDate);
+    }
+
+    const logs = await ScraperLog.find(query)
+      .sort({ startTime: -1 })
+      .select('source status startTime duration jobsFound jobsSaved performance')
+      .lean();
+
+    // Convert to CSV
+    const csvHeader = 'Source,Status,Start Time,Duration (ms),Jobs Found,Jobs Saved,Success Rate,Data Quality\n';
+    const csvData = logs.map(log => 
+      `${log.source},${log.status},${log.startTime},${log.duration},${log.jobsFound},${log.jobsSaved},${log.performance?.successRate || 0},${log.performance?.dataQuality || 0}`
+    ).join('\n');
+
+    const csvContent = csvHeader + csvData;
+
+    res.json({
+      success: true,
+      content: csvContent,
+      filename: `scraper-logs-${new Date().toISOString().split('T')[0]}.csv`
+    });
+  } catch (error) {
+    console.error('Export logs error:', error);
+    res.status(500).json({ error: 'Failed to export logs' });
+  }
+});
+
+// Get scraper performance stats
+router.get('/scraper/performance', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    
+    const performanceStats = await ScraperLog.getPerformanceStats(days);
+    const dailyStats = await ScraperLog.getDailyStats(7);
+    const topPerformers = await ScraperLog.getTopPerformers(10);
+
+    res.json({
+      performance: performanceStats,
+      dailyStats,
+      topPerformers,
+      period: `${days} days`
+    });
+  } catch (error) {
+    console.error('Performance stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch performance stats' });
+  }
+});
+
+// Schedule Management Routes
+
+// Create new schedule
+router.post('/scheduler/create', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const {
+      scraperId,
+      frequency,
+      time,
+      timezone = 'UTC',
+      enabled = true
+    } = req.body;
+
+    // Validate input
+    if (!scraperId || !frequency || !time) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: scraperId, frequency, time'
+      });
+    }
+
+    // Create schedule
+    const scheduleId = scraperScheduler.createSchedule({
+      scraperId,
+      frequency,
+      time,
+      timezone,
+      enabled
+    });
+
+    if (scheduleId) {
+      res.json({
+        success: true,
+        message: 'Schedule created successfully',
+        scheduleId
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to create schedule'
+      });
+    }
+  } catch (error) {
+    console.error('Create schedule error:', error);
+    res.status(500).json({ error: 'Failed to create schedule' });
+  }
+});
+
+// Toggle schedule enabled/disabled
+router.post('/scheduler/:scheduleId/toggle', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { scheduleId } = req.params;
+    const { enabled } = req.body;
+
+    const success = scraperScheduler.toggleSchedule(scheduleId, enabled);
+
+    if (success) {
+      res.json({
+        success: true,
+        message: `Schedule ${enabled ? 'enabled' : 'disabled'} successfully`
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to toggle schedule'
+      });
+    }
+  } catch (error) {
+    console.error('Toggle schedule error:', error);
+    res.status(500).json({ error: 'Failed to toggle schedule' });
+  }
+});
+
+// Delete schedule
+router.delete('/scheduler/:scheduleId', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { scheduleId } = req.params;
+
+    const success = scraperScheduler.deleteSchedule(scheduleId);
+
+    if (success) {
+      res.json({
+        success: true,
+        message: 'Schedule deleted successfully'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to delete schedule'
+      });
+    }
+  } catch (error) {
+    console.error('Delete schedule error:', error);
+    res.status(500).json({ error: 'Failed to delete schedule' });
+  }
+});
+
+// Error Detection and Alerting Routes
+
+// Get recent alerts
+router.get('/alerts', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { limit = 50, severity } = req.query;
+    const alerts = errorDetector.getRecentAlerts(parseInt(limit), severity);
+    
+    res.json({
+      alerts,
+      total: alerts.length
+    });
+  } catch (error) {
+    console.error('Get alerts error:', error);
+    res.status(500).json({ error: 'Failed to fetch alerts' });
+  }
+});
+
+// Get alert statistics
+router.get('/alerts/stats', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { hours = 24 } = req.query;
+    const stats = errorDetector.getAlertStats(parseInt(hours));
+    
+    res.json(stats);
+  } catch (error) {
+    console.error('Get alert stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch alert statistics' });
+  }
+});
+
+// Start error monitoring
+router.post('/monitoring/start', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { intervalMinutes = 5 } = req.body;
+    
+    errorDetector.startMonitoring(intervalMinutes);
+    
+    res.json({
+      success: true,
+      message: `Error monitoring started with ${intervalMinutes} minute interval`
+    });
+  } catch (error) {
+    console.error('Start monitoring error:', error);
+    res.status(500).json({ error: 'Failed to start error monitoring' });
+  }
+});
+
+// Stop error monitoring
+router.post('/monitoring/stop', authenticate, requireAdmin, async (req, res) => {
+  try {
+    errorDetector.stopMonitoring();
+    
+    res.json({
+      success: true,
+      message: 'Error monitoring stopped'
+    });
+  } catch (error) {
+    console.error('Stop monitoring error:', error);
+    res.status(500).json({ error: 'Failed to stop error monitoring' });
+  }
+});
+
+// Get monitoring status
+router.get('/monitoring/status', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const status = {
+      isMonitoring: errorDetector.isMonitoring,
+      thresholds: errorDetector.getThresholds(),
+      alertHistory: errorDetector.alertHistory.length
+    };
+    
+    res.json(status);
+  } catch (error) {
+    console.error('Get monitoring status error:', error);
+    res.status(500).json({ error: 'Failed to fetch monitoring status' });
+  }
+});
+
+// Update error detection thresholds
+router.post('/monitoring/thresholds', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const thresholds = req.body;
+    
+    errorDetector.updateThresholds(thresholds);
+    
+    res.json({
+      success: true,
+      message: 'Error detection thresholds updated',
+      thresholds: errorDetector.getThresholds()
+    });
+  } catch (error) {
+    console.error('Update thresholds error:', error);
+    res.status(500).json({ error: 'Failed to update thresholds' });
+  }
+});
+
+// Get current error detection thresholds
+router.get('/monitoring/thresholds', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const thresholds = errorDetector.getThresholds();
+    
+    res.json(thresholds);
+  } catch (error) {
+    console.error('Get thresholds error:', error);
+    res.status(500).json({ error: 'Failed to fetch thresholds' });
+  }
+});
+
+// Real-time alerts endpoint (Server-Sent Events)
+router.get('/alerts/stream', authenticate, requireAdmin, (req, res) => {
+  // Set headers for Server-Sent Events
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+
+  // Send initial connection message
+  res.write('data: {"type": "connected", "message": "Connected to alert stream"}\n\n');
+
+  // Listen for alerts
+  const onAlert = (alert) => {
+    res.write(`data: ${JSON.stringify({ type: 'alert', data: alert })}\n\n`);
+  };
+
+  errorDetector.on('alert', onAlert);
+
+  // Handle client disconnect
+  req.on('close', () => {
+    errorDetector.removeListener('alert', onAlert);
+  });
+
+  // Send heartbeat every 30 seconds
+  const heartbeat = setInterval(() => {
+    res.write('data: {"type": "heartbeat"}\n\n');
+  }, 30000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+  });
 });
 
 module.exports = router;

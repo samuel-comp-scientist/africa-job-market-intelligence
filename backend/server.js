@@ -17,6 +17,7 @@ const trendRoutes = require('./routes/trends');
 const adminRoutes = require('./routes/admin');
 const aiRoutes = require('./routes/ai');
 const userRoleRoutes = require('./routes/userRoles');
+const visualizationRoutes = require('./routes/visualization');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -157,6 +158,7 @@ app.use('/api/trends', trendRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/user', userRoleRoutes);
+app.use('/api/visualization', visualizationRoutes);
 
 // API documentation
 const swaggerJsdoc = require('swagger-jsdoc');

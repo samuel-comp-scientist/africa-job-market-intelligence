@@ -170,7 +170,7 @@ export default function AdminDashboard() {
         const result = await response.json();
         console.log(result.message);
         
-        // Refresh scraper data
+        // Refresh scraper data only
         const scrapersResponse = await fetch('http://localhost:5000/api/admin/scrapers', {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -183,7 +183,8 @@ export default function AdminDashboard() {
           setScrapers(scrapersData);
         }
       } else {
-        console.error('Failed to perform scraper action');
+        const errorData = await response.json();
+        console.error('Failed to perform scraper action:', errorData.message || 'Unknown error');
       }
     } catch (error) {
       console.error('Scraper action error:', error);

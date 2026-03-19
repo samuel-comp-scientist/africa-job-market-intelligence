@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Table, Tag, Progress, message, Modal, Form, Input, Select, Row, Col, Statistic, Space } from 'antd';
+import { Card, Button, Table, Tag, Progress, message, Modal, Form, Input, Select, Row, Col, Statistic, Space, Tabs } from 'antd';
 import { 
   Database, 
   Users, 
@@ -13,8 +13,17 @@ import {
   Download,
   Eye,
   Trash2,
-  Plus
+  Plus,
+  Settings,
+  Calendar,
+  FileText,
+  AlertTriangle,
+  BarChart3
 } from 'lucide-react';
+import ScraperManagement from './ScraperManagement';
+import DataVisualization from './DataVisualization';
+
+const { TabPane } = Tabs;
 
 interface Scraper {
   id: string;
@@ -358,117 +367,129 @@ const AdminDashboard: React.FC = () => {
         <p className="text-black">Manage scrapers, users, and data quality</p>
       </div>
 
-      {/* Statistics Cards */}
-      <Row gutter={[16, 16]} className="mb-6">
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="Total Jobs"
-              value={stats.totalJobs || 0}
-              prefix={<Database />}
-              valueStyle={{ color: 'black' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="Active Users"
-              value={users.length}
-              prefix={<Users />}
-              valueStyle={{ color: 'black' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="Data Quality"
-              value={dataQuality.qualityScore || 0}
-              suffix="%"
-              prefix={<CheckCircle />}
-              valueStyle={{ color: dataQuality.qualityScore > 80 ? '#3f8600' : '#cf1322' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="Active Scrapers"
-              value={scrapers.filter(s => s.status === 'running').length}
-              suffix={`/ ${scrapers.length}`}
-              prefix={<RefreshCw />}
-              valueStyle={{ color: 'black' }}
-            />
-          </Card>
-        </Col>
-      </Row>
+      <Tabs defaultActiveKey="overview">
+        <TabPane tab={<span><Database />Overview</span>} key="overview">
+          {/* Statistics Cards */}
+          <Row gutter={[16, 16]} className="mb-6">
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title="Total Jobs"
+                  value={stats.totalJobs || 0}
+                  prefix={<Database />}
+                  valueStyle={{ color: 'black' }}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title="Active Users"
+                  value={users.length}
+                  prefix={<Users />}
+                  valueStyle={{ color: 'black' }}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title="Data Quality"
+                  value={dataQuality.qualityScore || 0}
+                  suffix="%"
+                  prefix={<CheckCircle />}
+                  valueStyle={{ color: dataQuality.qualityScore > 80 ? '#3f8600' : '#cf1322' }}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card>
+                <Statistic
+                  title="Active Scrapers"
+                  value={scrapers.filter(s => s.status === 'running').length}
+                  suffix={`/ ${scrapers.length}`}
+                  prefix={<RefreshCw />}
+                  valueStyle={{ color: 'black' }}
+                />
+              </Card>
+            </Col>
+          </Row>
 
-      {/* Action Buttons */}
-      <Card className="mb-6">
-        <Space wrap>
-          <Button
-            type="primary"
-            size="large"
-            icon={<PlayCircle />}
-            onClick={startAllScrapers}
-            loading={loading}
-          >
-            Start All Scrapers
-          </Button>
-          <Button
-            size="large"
-            icon={<Filter />}
-            onClick={runDataQualityCheck}
-            loading={loading}
-          >
-            Run Data Quality Check
-          </Button>
-          <Button
-            size="large"
-            icon={<UserPlus />}
-            onClick={createTestUsers}
-            loading={loading}
-            disabled={testUsersCreated}
-          >
-            Create Test Users
-          </Button>
-          <Button
-            size="large"
-            icon={<RefreshCw />}
-            onClick={loadDashboardData}
-            loading={loading}
-          >
-            Refresh Dashboard
-          </Button>
-        </Space>
-      </Card>
+          {/* Action Buttons */}
+          <Card className="mb-6">
+            <Space wrap>
+              <Button
+                type="primary"
+                size="large"
+                icon={<PlayCircle />}
+                onClick={startAllScrapers}
+                loading={loading}
+              >
+                Start All Scrapers
+              </Button>
+              <Button
+                size="large"
+                icon={<Filter />}
+                onClick={runDataQualityCheck}
+                loading={loading}
+              >
+                Run Data Quality Check
+              </Button>
+              <Button
+                size="large"
+                icon={<UserPlus />}
+                onClick={createTestUsers}
+                loading={loading}
+                disabled={testUsersCreated}
+              >
+                Create Test Users
+              </Button>
+              <Button
+                size="large"
+                icon={<RefreshCw />}
+                onClick={loadDashboardData}
+                loading={loading}
+              >
+                Refresh Dashboard
+              </Button>
+            </Space>
+          </Card>
 
-      {/* Scrapers Table */}
-      <Card title="🔧 Scraper Management" className="mb-6">
-        <Table
-          columns={scraperColumns}
-          dataSource={scrapers}
-          rowKey="id"
-          loading={loading}
-          pagination={false}
-        />
-      </Card>
+          {/* Scrapers Table */}
+          <Card title="🔧 Scraper Management" className="mb-6">
+            <Table
+              columns={scraperColumns}
+              dataSource={scrapers}
+              rowKey="id"
+              loading={loading}
+              pagination={false}
+            />
+          </Card>
 
-      {/* Users Table */}
-      <Card title="👥 User Management">
-        <Table
-          columns={userColumns}
-          dataSource={users}
-          rowKey="email"
-          loading={loading}
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            showQuickJumper: true
-          }}
-        />
-      </Card>
+          {/* Users Table */}
+          <Card title="👥 User Management">
+            <Table
+              columns={userColumns}
+              dataSource={users}
+              rowKey="email"
+              loading={loading}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showQuickJumper: true
+              }}
+            />
+          </Card>
+        </TabPane>
+
+        <TabPane tab={<span><Settings />Scraper Management</span>} key="scrapers">
+          <ScraperManagement />
+        </TabPane>
+
+        <TabPane tab={<span><BarChart3 />Data Visualization</span>} key="visualization">
+          <DataVisualization />
+        </TabPane>
+      </Tabs>
     </div>
   );
 };
