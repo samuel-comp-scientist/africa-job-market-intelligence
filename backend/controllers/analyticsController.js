@@ -49,6 +49,34 @@ class AnalyticsController {
     }
   }
 
+  static async salaryByCountry(req, res) {
+    try {
+      const data = await AnalyticsService.getSalaryByCountry();
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch salary by country", message: error.message });
+    }
+  }
+
+  static async salaryBySeniority(req, res) {
+    try {
+      const data = await AnalyticsService.getSalaryBySeniority();
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch salary by seniority", message: error.message });
+    }
+  }
+
+  static async salaryByJobTitle(req, res) {
+    try {
+      const limit = parseInt(req.query.limit) || 15;
+      const data = await AnalyticsService.getSalaryByJobTitle(limit);
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch salary by job title", message: error.message });
+    }
+  }
+
 }
 
 module.exports = AnalyticsController;

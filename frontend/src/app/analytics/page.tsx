@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
-import { TrendingUp, Code, Brain, Globe, ArrowUpRight } from 'lucide-react';
+import { TrendingUp, Code, Brain, Globe, ArrowUpRight, DollarSign } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { analyticsApi, type SkillCount, type CountryData, type SalaryBySkill, type JobTrends, type CompanyCount } from '../../../utils/api';
+import { analyticsApi, type SkillCount, type CountryData, type SalaryBySkill, type JobTrends, type CompanyCount, type SalaryByCountry, type SalaryBySeniority, type SalaryByTitle } from '@/utils/api';
 
 const LANGUAGES = new Set([
   'javascript', 'python', 'typescript', 'java', 'c#', 'c++', 'go', 'rust',
@@ -73,6 +73,9 @@ export default function AnalyticsPage() {
   const [salaryBySkill, setSalaryBySkill] = useState<SalaryBySkill[]>([]);
   const [trends, setTrends] = useState<JobTrends>({});
   const [companies, setCompanies] = useState<CompanyCount[]>([]);
+  const [salaryByCountry, setSalaryByCountry] = useState<SalaryByCountry[]>([]);
+  const [salaryBySeniority, setSalaryBySeniority] = useState<SalaryBySeniority[]>([]);
+  const [salaryByTitle, setSalaryByTitle] = useState<SalaryByTitle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,14 +86,20 @@ export default function AnalyticsPage() {
       analyticsApi.getSalaryBySkill(),
       analyticsApi.getJobTrends(),
       analyticsApi.getTopCompanies(10),
-    ]).then(([skillsRes, countriesRes, salaryRes, trendsRes, companiesRes]) => {
+      analyticsApi.getSalaryByCountry(),
+      analyticsApi.getSalaryBySeniority(),
+      analyticsApi.getSalaryByJobTitle(15),
+    ]).then(([skillsRes, countriesRes, salaryRes, trendsRes, companiesRes, salaryCountryRes, salarySeniorityRes, salaryTitleRes]) => {
       if (skillsRes.status === 'fulfilled') setSkills(skillsRes.value);
       if (countriesRes.status === 'fulfilled') setCountries(countriesRes.value);
       if (salaryRes.status === 'fulfilled') setSalaryBySkill(salaryRes.value);
       if (trendsRes.status === 'fulfilled') setTrends(trendsRes.value);
       if (companiesRes.status === 'fulfilled') setCompanies(companiesRes.value);
+      if (salaryCountryRes.status === 'fulfilled') setSalaryByCountry(salaryCountryRes.value);
+      if (salarySeniorityRes.status === 'fulfilled') setSalaryBySeniority(salarySeniorityRes.value);
+      if (salaryTitleRes.status === 'fulfilled') setSalaryByTitle(salaryTitleRes.value);
 
-      const errors = [skillsRes, countriesRes, salaryRes, trendsRes, companiesRes]
+      const errors = [skillsRes, countriesRes, salaryRes, trendsRes, companiesRes, salaryCountryRes, salarySeniorityRes, salaryTitleRes]
         .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
         .map((r) => (r.reason as Error).message);
 
@@ -386,6 +395,113 @@ export default function AnalyticsPage() {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Section: Salary Intelligence */}
+              <div className="mt-8 mb-4 flex items-center gap-3">
+                <DollarSign className="h-6 w-6 text-emerald-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Salary Intelligence</h2>
+              </div>
+
+              {/* Row 5: Highest Paying Skills + Salary by Country */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                {/* Highest Paying Skills */}
+                <div className="bg-white rounded-xl shadow p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <DollarSign className="h-5 w-5 text-emerald-600" />
+                    <h2 className="text-lg font-semibold text-gray-900">Highest Paying Tech Skills</h2>
+                  </div>
+                  {salaryBySkill.length === 0 ? (
+                    <p className="text-gray-500 text-sm py-8 text-center">No salary data available yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {salaryBySkill.slice(0, 10).map((s, i) => {
+                        const maxSalary = salaryBySkill[0]?.avgSalary || 1;
+                        const pct = Math.round((s.avgSalary / maxSalary) * 100);
+                        return (
+                          <div key={s.skill} className="flex items-center gap-3">
+                            <span className="text-xs font-mono text-gray-400 w-4">{i + 1}</span>
+                            <span className="text-sm font-medium text-gray-900 capitalize w-28">{s.skill}</span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2.5">
+                              <div className="bg-emerald-500 h-2.5 rounded-full" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-sm font-semibold text-emerald-600 w-20 text-right">${s.avgSalary.toLocaleString()}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Salary by Country */}
+                <div className="bg-white rounded-xl shadow p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Globe className="h-5 w-5 text-cyan-600" />
+                    <h2 className="text-lg font-semibold text-gray-900">Salary by Country</h2>
+                  </div>
+                  {salaryByCountry.length === 0 ? (
+                    <p className="text-gray-500 text-sm py-8 text-center">No salary data available.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={320}>
+                      <BarChart data={salaryByCountry.slice(0, 10)} margin={{ left: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="country" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
+                        <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => `$${v / 1000}k`} />
+                        <Tooltip formatter={(v) => [`$${(Number(v) ?? 0).toLocaleString()}`, 'Avg Salary']} />
+                        <Bar dataKey="avgSalary" fill="#06b6d4" radius={[4, 4, 0, 0]} barSize={32} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
+
+              {/* Row 6: Salary by Job Role / Seniority */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Salary by Seniority Level */}
+                <div className="bg-white rounded-xl shadow p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <TrendingUp className="h-5 w-5 text-violet-600" />
+                    <h2 className="text-lg font-semibold text-gray-900">Salary by Experience Level</h2>
+                  </div>
+                  {salaryBySeniority.length === 0 ? (
+                    <p className="text-gray-500 text-sm py-8 text-center">No seniority data available.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {salaryBySeniority.map((s) => (
+                        <div key={s.level} className="border border-gray-100 rounded-lg p-4">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-semibold text-gray-900 capitalize">{s.level}</span>
+                            <span className="text-lg font-bold text-violet-600">${s.avgSalary.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-xs text-gray-500">
+                            <span>{s.count} jobs analyzed</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Salary by Job Title */}
+                <div className="bg-white rounded-xl shadow p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <DollarSign className="h-5 w-5 text-amber-600" />
+                    <h2 className="text-lg font-semibold text-gray-900">Salary by Job Title</h2>
+                  </div>
+                  {salaryByTitle.length === 0 ? (
+                    <p className="text-gray-500 text-sm py-8 text-center">No job title data available.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={320}>
+                      <BarChart data={salaryByTitle.slice(0, 10)} layout="vertical" margin={{ left: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                        <XAxis type="number" tickFormatter={(v: number) => `$${v / 1000}k`} />
+                        <YAxis dataKey="role" type="category" width={140} tick={{ fontSize: 11 }} />
+                        <Tooltip formatter={(v) => [`$${(Number(v) ?? 0).toLocaleString()}`, 'Avg Salary']} />
+                        <Bar dataKey="avgSalary" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={20} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   )}
                 </div>
               </div>

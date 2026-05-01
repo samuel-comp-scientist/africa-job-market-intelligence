@@ -245,6 +245,72 @@ jobSchema.statics.getTopCompanies = function(limit = 10) {
   ]);
 };
 
+jobSchema.statics.getSalaryByCountry = function() {
+  return this.aggregate([
+    { $match: { isActive: true, $or: [{ salaryMin: { $gt: 0 } }, { salaryMax: { $gt: 0 } }] } },
+    {
+      $group: {
+        _id: '$country',
+        avgSalary: { $avg: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] } },
+        minSalary: { $min: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] } },
+        maxSalary: { $max: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] } },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { avgSalary: -1 } },
+    { $project: { country: '$_id', avgSalary: { $round: ['$avgSalary', 0] }, minSalary: { $round: ['$minSalary', 0] }, maxSalary: { $round: ['$maxSalary', 0] }, count: 1, _id: 0 } }
+  ]);
+};
+
+jobSchema.statics.getSalaryBySeniority = function() {
+  return this.aggregate([
+    { $match: { isActive: true, $or: [{ salaryMin: { $gt: 0 } }, { salaryMax: { $gt: 0 } }] } },
+    {
+      $group: {
+        _id: '$seniorityLevel',
+        avgSalary: { $avg: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] } },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { avgSalary: -1 } },
+    { $project: { level: '$_id', avgSalary: { $round: ['$avgSalary', 0] }, count: 1, _id: 0 } }
+  ]);
+};
+
+jobSchema.statics.getSalaryByJobTitle = function(limit = 15) {
+  return this.aggregate([
+    { $match: { isActive: true, $or: [{ salaryMin: { $gt: 0 } }, { salaryMax: { $gt: 0 } }] } },
+    {
+      $project: {
+        role: {
+          $trim: {
+            input: {
+              $regexFind: {
+                input: '$jobTitle',
+                regex: '(?i)(software engineer|data scientist|devops|data engineer|machine learning|frontend|backend|full stack|fullstack|mobile developer|cloud architect|security engineer|qa engineer|test engineer|product manager|ui ux|designer|system administrator|network engineer|blockchain|ai engineer|ml engineer|analyst|developer|programmer|tech lead|engineering manager|cto|vp of engineering)'
+              }
+            }
+          }
+        },
+        avgJobSalary: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] },
+        jobTitle: 1,
+        salaryMin: 1,
+        salaryMax: 1
+      }
+    },
+    {
+      $group: {
+        _id: { $ifNull: ['$jobTitle', 'Other'] },
+        avgSalary: { $avg: '$avgJobSalary' },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { avgSalary: -1 } },
+    { $limit: limit },
+    { $project: { role: '$_id', avgSalary: { $round: ['$avgSalary', 0] }, count: 1, _id: 0 } }
+  ]);
+};
+
 // Pre-save middleware to extract additional information
 jobSchema.pre('save', function(next) {
   // Extract seniority level from job title

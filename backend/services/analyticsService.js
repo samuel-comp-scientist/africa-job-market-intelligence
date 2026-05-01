@@ -38,6 +38,21 @@ class AnalyticsService {
     }));
   }
 
+  static async getSalaryByCountry() {
+    const results = await Job.getSalaryByCountry();
+    return results;
+  }
+
+  static async getSalaryBySeniority() {
+    const results = await Job.getSalaryBySeniority();
+    return results;
+  }
+
+  static async getSalaryByJobTitle(limit = 15) {
+    const results = await Job.getSalaryByJobTitle(limit);
+    return results;
+  }
+
 }
 
 module.exports = AnalyticsService;

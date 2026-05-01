@@ -36,6 +36,26 @@ export interface CompanyCount {
   count: number;
 }
 
+export interface SalaryByCountry {
+  country: string;
+  avgSalary: number;
+  minSalary: number;
+  maxSalary: number;
+  count: number;
+}
+
+export interface SalaryBySeniority {
+  level: string;
+  avgSalary: number;
+  count: number;
+}
+
+export interface SalaryByTitle {
+  role: string;
+  avgSalary: number;
+  count: number;
+}
+
 export interface JobTrends {
   [month: string]: number;
 }
@@ -59,5 +79,17 @@ export const analyticsApi = {
 
   getTopCompanies(limit = 10) {
     return api<CompanyCount[]>(`/api/analytics/companies?limit=${limit}`);
+  },
+
+  getSalaryByCountry() {
+    return api<SalaryByCountry[]>('/api/analytics/salary-by-country');
+  },
+
+  getSalaryBySeniority() {
+    return api<SalaryBySeniority[]>('/api/analytics/salary-by-seniority');
+  },
+
+  getSalaryByJobTitle(limit = 15) {
+    return api<SalaryByTitle[]>(`/api/analytics/salary-by-title?limit=${limit}`);
   },
 };
