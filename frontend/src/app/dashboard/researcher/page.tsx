@@ -1,20 +1,107 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { BarChart3, TrendingUp, Download, Database, Search, Filter, FileText, Activity } from 'lucide-react';
+import {
+  BarChart3, TrendingUp, Download, Database, Search, Filter, FileText, Activity,
+  MapPin, DollarSign, Briefcase, Users, Calendar, ChevronDown, RefreshCw
+} from 'lucide-react';
+import {
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area
+} from 'recharts';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#14b8a6', '#6366f1'];
+
+interface Stats {
+  totalJobs: number;
+  activeJobs: number;
+  withSalary: number;
+  countries: number;
+  uniqueSkills: number;
+  companies: number;
+  lastUpdated: string;
+}
+
+interface SkillDemand {
+  skill: string;
+  count: number;
+  countryCount: number;
+}
+
+interface SalaryDist {
+  range: string;
+  count: number;
+  avgSalary: number;
+}
+
+interface CountryData {
+  _id: string;
+  count: number;
+  avgSalary: number;
+}
+
+interface GrowthData {
+  country: string;
+  month: string;
+  count: number;
+}
+
+interface IndustryData {
+  industry: string;
+  count: number;
+  avgSalary: number;
+}
+
+interface SalaryCountryData {
+  country: string;
+  avgSalary: number;
+  minSalary: number;
+  maxSalary: number;
+  count: number;
+}
+
+interface CityData {
+  country: string;
+  city: string;
+  count: number;
+  avgSalary: number;
+}
+
+interface SkillData {
+  skill: string;
+  count: number;
+}
+
 export default function ResearcherDashboard() {
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [skillDemand, setSkillDemand] = useState<SkillDemand[]>([]);
+  const [salaryDist, setSalaryDist] = useState<SalaryDist[]>([]);
+  const [countryDist, setCountryDist] = useState<CountryData[]>([]);
+  const [jobGrowth, setJobGrowth] = useState<GrowthData[]>([]);
+  const [industryBreakdown, setIndustryBreakdown] = useState<IndustryData[]>([]);
+  const [salaryByCountry, setSalaryByCountry] = useState<SalaryCountryData[]>([]);
+  const [jobsByCity, setJobsByCity] = useState<CityData[]>([]);
+  const [topSkills, setTopSkills] = useState<SkillData[]>([]);
+  const [trends, setTrends] = useState<Record<string, number>>({});
+
+  const [activeTab, setActiveTab] = useState('overview');
+  const [selectedCountry, setSelectedCountry] = useState('');
+  const [growthMonths, setGrowthMonths] = useState(12);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
-    
+
     if (!token || !user) {
       router.push('/login');
       return;
@@ -30,6 +117,72 @@ export default function ResearcherDashboard() {
     setLoading(false);
   }, [router]);
 
+  const fetchData = useCallback(async () => {
+    setDataLoading(true);
+    try {
+      const [
+        statsRes, skillRes, salaryDistRes, countryRes, growthRes,
+        industryRes, salaryCountryRes, cityRes, topSkillsRes, trendsRes
+      ] = await Promise.all([
+        fetch(`${API_BASE}/api/analytics/advanced-stats`),
+        fetch(`${API_BASE}/api/analytics/skill-demand`),
+        fetch(`${API_BASE}/api/analytics/salary-distribution`),
+        fetch(`${API_BASE}/api/analytics/countries`),
+        fetch(`${API_BASE}/api/analytics/job-growth?months=${growthMonths}`),
+        fetch(`${API_BASE}/api/analytics/industry-breakdown`),
+        fetch(`${API_BASE}/api/analytics/salary-by-country`),
+        fetch(`${API_BASE}/api/analytics/jobs-by-city${selectedCountry ? `?country=${selectedCountry}` : ''}`),
+        fetch(`${API_BASE}/api/analytics/top-skills?limit=15`),
+        fetch(`${API_BASE}/api/analytics/trends`),
+      ]);
+
+      const [statsD, skillD, salaryDistD, countryD, growthD, industryD, salaryCountryD, cityD, topSkillsD, trendsD] = await Promise.all([
+        statsRes.json(), skillRes.json(), salaryDistRes.json(), countryRes.json(),
+        growthRes.json(), industryRes.json(), salaryCountryRes.json(),
+        cityRes.json(), topSkillsRes.json(), trendsRes.json()
+      ]);
+
+      setStats(statsD);
+      setSkillDemand(skillD);
+      setSalaryDist(salaryDistD);
+      setCountryDist(countryD);
+      setJobGrowth(growthD);
+      setIndustryBreakdown(industryD);
+      setSalaryByCountry(salaryCountryD);
+      setJobsByCity(cityD);
+      setTopSkills(topSkillsD);
+      setTrends(trendsD);
+    } catch (error) {
+      console.error('Failed to fetch analytics data:', error);
+    } finally {
+      setDataLoading(false);
+    }
+  }, [growthMonths, selectedCountry]);
+
+  useEffect(() => {
+    if (!loading) {
+      fetchData();
+    }
+  }, [loading, fetchData]);
+
+  const processGrowthData = () => {
+    const byCountry: Record<string, Record<string, number>> = {};
+    jobGrowth.forEach(item => {
+      if (!byCountry[item.country]) byCountry[item.country] = {};
+      byCountry[item.country][item.month] = item.count;
+    });
+    const allMonths = [...new Set(jobGrowth.map(g => g.month))].sort();
+    const countries = [...new Set(jobGrowth.map(g => g.country))];
+    return {
+      timeline: allMonths.map(month => {
+        const entry: Record<string, string | number> = { month };
+        countries.forEach(c => { entry[c] = byCountry[c]?.[month] || 0; });
+        return entry;
+      }),
+      countries
+    };
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -38,7 +191,7 @@ export default function ResearcherDashboard() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-4 text-gray-600">Loading your dashboard...</p>
+              <p className="mt-4 text-gray-600">Loading dashboard...</p>
             </div>
           </div>
         </main>
@@ -47,373 +200,405 @@ export default function ResearcherDashboard() {
     );
   }
 
+  const { timeline, countries } = processGrowthData();
+
+  const tabs = [
+    { id: 'overview', label: 'Overview', icon: BarChart3 },
+    { id: 'skills', label: 'Skill Demand', icon: Activity },
+    { id: 'salaries', label: 'Salaries', icon: DollarSign },
+    { id: 'geography', label: 'Geography', icon: MapPin },
+    { id: 'trends', label: 'Growth Trends', icon: TrendingUp },
+  ];
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <main className="pt-24 pb-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Welcome back, {userData?.profile?.firstName}! 👋
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Your advanced analytics dashboard and research tools
-            </p>
-          </div>
-
-          {/* Quick Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <Database className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Records</p>
-                  <p className="text-2xl font-bold text-gray-900">45.6K</p>
-                  <p className="text-xs text-green-600">Updated daily</p>
-                </div>
-              </div>
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Market Intelligence</h1>
+              <p className="text-gray-600 mt-1">Advanced analytics and research tools</p>
             </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="p-3 bg-green-100 rounded-lg">
-                  <Activity className="h-6 w-6 text-green-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Active Queries</p>
-                  <p className="text-2xl font-bold text-gray-900">127</p>
-                  <p className="text-xs text-gray-600">This month</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="p-3 bg-purple-100 rounded-lg">
-                  <Download className="h-6 w-6 text-purple-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Data Exports</p>
-                  <p className="text-2xl font-bold text-gray-900">89</p>
-                  <p className="text-xs text-gray-600">CSV/JSON files</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="p-3 bg-orange-100 rounded-lg">
-                  <FileText className="h-6 w-6 text-orange-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Reports</p>
-                  <p className="text-2xl font-bold text-gray-900">23</p>
-                  <p className="text-xs text-gray-600">Generated</p>
-                </div>
-              </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500">Last updated: {stats?.lastUpdated ? new Date(stats.lastUpdated).toLocaleString() : '...'}</span>
+              <button onClick={fetchData} disabled={dataLoading} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 ${dataLoading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
           </div>
 
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Column - Dataset Explorer */}
-            <div className="lg:col-span-2 space-y-8">
-              {/* Dataset Explorer */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-gray-900">Dataset Explorer</h2>
-                  <Database className="h-5 w-5 text-gray-400" />
-                </div>
-                
-                <div className="mb-6">
-                  <div className="flex space-x-4 mb-4">
-                    <div className="flex-1">
-                      <input
-                        type="text"
-                        placeholder="Search datasets..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center">
-                      <Search className="h-4 w-4 mr-2" />
-                      Search
-                    </button>
+          {/* Stats Cards */}
+          {stats && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+              {[
+                { label: 'Total Jobs', value: stats.totalJobs?.toLocaleString(), icon: Database, color: 'blue' },
+                { label: 'Active Jobs', value: stats.activeJobs?.toLocaleString(), icon: Activity, color: 'green' },
+                { label: 'With Salary', value: stats.withSalary?.toLocaleString(), icon: DollarSign, color: 'amber' },
+                { label: 'Countries', value: stats.countries, icon: MapPin, color: 'purple' },
+                { label: 'Unique Skills', value: stats.uniqueSkills, icon: Briefcase, color: 'cyan' },
+                { label: 'Companies', value: stats.companies, icon: Users, color: 'indigo' },
+              ].map((s, i) => (
+                <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <s.icon className={`h-4 w-4 text-${s.color}-600`} />
+                    <span className="text-xs text-gray-500">{s.label}</span>
                   </div>
-                  
-                  <div className="flex space-x-2">
-                    <button className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-gray-200">
-                      All Categories
-                    </button>
-                    <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200">
-                      Jobs
-                    </button>
-                    <button className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-gray-200">
-                      Skills
-                    </button>
-                    <button className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-gray-200">
-                      Salaries
-                    </button>
-                    <button className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-gray-200">
-                      Companies
-                    </button>
-                  </div>
+                  <p className="text-2xl font-bold text-gray-900">{dataLoading ? '...' : s.value}</p>
                 </div>
-
-                <div className="space-y-4">
-                  {[
-                    {
-                      name: 'Job Postings Dataset',
-                      description: 'Complete job listings with skills, salary, and location data',
-                      size: '2.3GB',
-                      records: '45,678',
-                      lastUpdated: '2024-03-07',
-                      format: 'CSV, JSON'
-                    },
-                    {
-                      name: 'Skills Demand Analytics',
-                      description: 'Real-time skill demand trends across industries and locations',
-                      size: '156MB',
-                      records: '8,234',
-                      lastUpdated: '2024-03-07',
-                      format: 'CSV, JSON'
-                    },
-                    {
-                      name: 'Salary Benchmark Data',
-                      description: 'Comprehensive salary data by role, experience, and location',
-                      size: '89MB',
-                      records: '12,456',
-                      lastUpdated: '2024-03-06',
-                      format: 'CSV, JSON'
-                    },
-                    {
-                      name: 'Company Intelligence',
-                      description: 'Company profiles, hiring patterns, and market position',
-                      size: '234MB',
-                      records: '3,456',
-                      lastUpdated: '2024-03-05',
-                      format: 'CSV, JSON'
-                    },
-                    {
-                      name: 'Market Trends Historical',
-                      description: '5-year historical data on job market trends and predictions',
-                      size: '567MB',
-                      records: '67,890',
-                      lastUpdated: '2024-03-07',
-                      format: 'CSV, JSON'
-                    }
-                  ].map((dataset, index) => (
-                    <div key={index} className="border rounded-lg p-4 hover:bg-gray-50">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1">
-                          <h3 className="font-medium text-gray-900">{dataset.name}</h3>
-                          <p className="text-sm text-gray-600 mt-1">{dataset.description}</p>
-                        </div>
-                        <button className="ml-4 text-blue-600 hover:text-blue-700">
-                          <Download className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
-                        <span>{dataset.size}</span>
-                        <span>•</span>
-                        <span>{dataset.records} records</span>
-                        <span>•</span>
-                        <span>Updated {dataset.lastUpdated}</span>
-                        <span>•</span>
-                        <span>{dataset.format}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Advanced Analytics */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-gray-900">Advanced Analytics</h2>
-                  <BarChart3 className="h-5 w-5 text-gray-400" />
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h3 className="font-semibold text-gray-900 mb-4">Trend Analysis</h3>
-                    <div className="space-y-3">
-                      <div className="border rounded-lg p-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-medium text-gray-900">Remote Work Growth</span>
-                          <span className="text-sm text-green-600">+42%</span>
-                        </div>
-                        <p className="text-xs text-gray-600">Year-over-year increase in remote job postings</p>
-                      </div>
-                      <div className="border rounded-lg p-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-medium text-gray-900">AI Skills Demand</span>
-                          <span className="text-sm text-green-600">+67%</span>
-                        </div>
-                        <p className="text-xs text-gray-600">Growth in AI/ML related skill requirements</p>
-                      </div>
-                      <div className="border rounded-lg p-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-medium text-gray-900">FinTech Hiring</span>
-                          <span className="text-sm text-green-600">+35%</span>
-                        </div>
-                        <p className="text-xs text-gray-600">Increase in financial technology sector hiring</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="font-semibold text-gray-900 mb-4">Market Correlations</h3>
-                    <div className="space-y-3">
-                      <div className="border rounded-lg p-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-medium text-gray-900">Skills vs Salary</span>
-                          <span className="text-sm text-blue-600">0.87</span>
-                        </div>
-                        <p className="text-xs text-gray-600">Strong correlation between skill level and compensation</p>
-                      </div>
-                      <div className="border rounded-lg p-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-medium text-gray-900">Location vs Demand</span>
-                          <span className="text-sm text-blue-600">0.72</span>
-                        </div>
-                        <p className="text-xs text-gray-600">Geographic impact on job demand</p>
-                      </div>
-                      <div className="border rounded-lg p-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-medium text-gray-900">Experience vs Opportunities</span>
-                          <span className="text-sm text-blue-600">0.65</span>
-                        </div>
-                        <p className="text-xs text-gray-600">Experience level impact on available positions</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              ))}
             </div>
+          )}
 
-            {/* Right Column - Custom Charts & Tools */}
-            <div className="space-y-8">
-              {/* Custom Chart Builder */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-gray-900">Custom Charts</h2>
-                  <BarChart3 className="h-5 w-5 text-gray-400" />
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Chart Type</label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option>Line Chart</option>
-                      <option>Bar Chart</option>
-                      <option>Pie Chart</option>
-                      <option>Scatter Plot</option>
-                      <option>Heat Map</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">X-Axis</label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option>Time Period</option>
-                      <option>Location</option>
-                      <option>Skill Category</option>
-                      <option>Experience Level</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Y-Axis</label>
-                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option>Job Count</option>
-                      <option>Average Salary</option>
-                      <option>Skill Demand</option>
-                      <option>Growth Rate</option>
-                    </select>
-                  </div>
-                  
-                  <button className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700">
-                    Generate Chart
-                  </button>
-                </div>
-              </div>
-
-              {/* Recent Queries */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-gray-900">Recent Queries</h2>
-                  <Activity className="h-5 w-5 text-gray-400" />
-                </div>
-                
-                <div className="space-y-3">
-                  {[
-                    { query: 'Python demand by location', time: '2 hours ago', results: '1,234' },
-                    { query: 'Remote work salary trends', time: '5 hours ago', results: '856' },
-                    { query: 'FinTech skills analysis', time: '1 day ago', results: '2,456' },
-                    { query: 'Junior developer market', time: '2 days ago', results: '3,789' },
-                    { query: 'Nigeria tech ecosystem', time: '3 days ago', results: '5,678' }
-                  ].map((item, index) => (
-                    <div key={index} className="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{item.query}</p>
-                          <p className="text-xs text-gray-600">{item.time} • {item.results} results</p>
-                        </div>
-                        <Search className="h-4 w-4 text-gray-400" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Export Tools */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold text-gray-900">Export Tools</h2>
-                  <Download className="h-5 w-5 text-gray-400" />
-                </div>
-                
-                <div className="space-y-3">
-                  <button className="w-full text-left bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg p-3 transition-colors">
-                    <div className="flex items-center">
-                      <Download className="h-4 w-4 text-green-600 mr-3" />
-                      <div>
-                        <p className="font-medium text-green-900">Export Current Dataset</p>
-                        <p className="text-xs text-green-700">CSV or JSON format</p>
-                      </div>
-                    </div>
-                  </button>
-                  
-                  <button className="w-full text-left bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg p-3 transition-colors">
-                    <div className="flex items-center">
-                      <FileText className="h-4 w-4 text-blue-600 mr-3" />
-                      <div>
-                        <p className="font-medium text-blue-900">Generate Report</p>
-                        <p className="text-xs text-blue-700">PDF with insights</p>
-                      </div>
-                    </div>
-                  </button>
-                  
-                  <button className="w-full text-left bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg p-3 transition-colors">
-                    <div className="flex items-center">
-                      <Database className="h-4 w-4 text-purple-600 mr-3" />
-                      <div>
-                        <p className="font-medium text-purple-900">API Access</p>
-                        <p className="text-xs text-purple-700">Get API key</p>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </div>
+          {/* Tab Navigation */}
+          <div className="flex items-center gap-1 bg-white rounded-xl shadow-sm border border-gray-200 p-1 mb-8 overflow-x-auto">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <tab.icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            ))}
           </div>
+
+          {dataLoading ? (
+            <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div></div>
+          ) : (
+            <>
+              {/* Overview Tab */}
+              {activeTab === 'overview' && (
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Top Skills */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                      <h3 className="text-lg font-semibold mb-4">Top 15 Most Demanded Skills</h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={topSkills} layout="vertical" margin={{ left: 80 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis type="number" />
+                          <YAxis dataKey="skill" type="category" width={80} tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Bar dataKey="count" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Industry Breakdown */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                      <h3 className="text-lg font-semibold mb-4">Industry Breakdown</h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie data={industryBreakdown} cx="50%" cy="50%" outerRadius={100} dataKey="count" label={(entry) => { const d = entry as unknown as IndustryData; const p = entry as unknown as { percent?: number }; return `${d.industry} (${((p.percent || 0) * 100).toFixed(0)}%)`; }} labelLine={false}>
+                            {industryBreakdown.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Job Trends */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-lg font-semibold mb-4">Monthly Job Posting Trends</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <AreaChart data={Object.entries(trends).map(([month, count]) => ({ month, count }))}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="count" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Country Distribution */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-lg font-semibold mb-4">Jobs by Country</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={countryDist}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="_id" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="count" fill="#3b82f6" name="Jobs" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Skills Tab */}
+              {activeTab === 'skills' && (
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Skill Demand by Country Reach */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                      <h3 className="text-lg font-semibold mb-4">Skills by Geographic Reach</h3>
+                      <p className="text-sm text-gray-500 mb-4">Skills demanded across the most countries</p>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <BarChart data={[...skillDemand].sort((a, b) => b.countryCount - a.countryCount).slice(0, 20)} layout="vertical" margin={{ left: 100 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis type="number" />
+                          <YAxis dataKey="skill" type="category" width={100} tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Bar dataKey="countryCount" fill="#10b981" name="Countries" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Top Skills by Count */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                      <h3 className="text-lg font-semibold mb-4">Skills by Job Count</h3>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <BarChart data={skillDemand.slice(0, 20)} layout="vertical" margin={{ left: 100 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis type="number" />
+                          <YAxis dataKey="skill" type="category" width={100} tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Bar dataKey="count" fill="#3b82f6" name="Jobs" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Full Skill Table */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-lg font-semibold mb-4">Complete Skill Rankings</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="text-left py-3 px-4 font-medium text-gray-500">#</th>
+                            <th className="text-left py-3 px-4 font-medium text-gray-500">Skill</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Jobs</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Countries</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {skillDemand.map((s, i) => (
+                            <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="py-2.5 px-4 text-gray-400">{i + 1}</td>
+                              <td className="py-2.5 px-4 font-medium text-gray-900 capitalize">{s.skill}</td>
+                              <td className="py-2.5 px-4 text-right">{s.count.toLocaleString()}</td>
+                              <td className="py-2.5 px-4 text-right">
+                                <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">{s.countryCount}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Salaries Tab */}
+              {activeTab === 'salaries' && (
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Salary Distribution */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                      <h3 className="text-lg font-semibold mb-4">Salary Distribution</h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={salaryDist}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="range" />
+                          <YAxis />
+                          <Tooltip />
+                          <Bar dataKey="count" fill="#10b981" name="Jobs" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Salary by Country */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                      <h3 className="text-lg font-semibold mb-4">Average Salary by Country</h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={salaryByCountry} layout="vertical" margin={{ left: 100 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis type="number" tickFormatter={v => `$${v.toLocaleString()}`} />
+                          <YAxis dataKey="country" type="category" width={100} tick={{ fontSize: 11 }} />
+                          <Tooltip formatter={(v) => `$${Number(v).toLocaleString()}`} />
+                          <Bar dataKey="avgSalary" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Salary by Country Table */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-lg font-semibold mb-4">Detailed Salary Breakdown</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="text-left py-3 px-4 font-medium text-gray-500">Country</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Avg Salary</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Min</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Max</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Jobs</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {salaryByCountry.map((s, i) => (
+                            <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="py-2.5 px-4 font-medium text-gray-900">{s.country}</td>
+                              <td className="py-2.5 px-4 text-right font-semibold text-green-700">${s.avgSalary?.toLocaleString()}</td>
+                              <td className="py-2.5 px-4 text-right text-gray-500">${s.minSalary?.toLocaleString()}</td>
+                              <td className="py-2.5 px-4 text-right text-gray-500">${s.maxSalary?.toLocaleString()}</td>
+                              <td className="py-2.5 px-4 text-right">{s.count?.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Geography Tab */}
+              {activeTab === 'geography' && (
+                <div className="space-y-8">
+                  {/* Filters */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                    <div className="flex items-center gap-4">
+                      <Filter className="h-4 w-4 text-gray-500" />
+                      <label className="text-sm font-medium text-gray-700">Filter by Country:</label>
+                      <select
+                        value={selectedCountry}
+                        onChange={(e) => setSelectedCountry(e.target.value)}
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">All Countries</option>
+                        {countries.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Jobs by City */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-lg font-semibold mb-4">Jobs by City {selectedCountry && <span className="text-gray-400 font-normal">in {selectedCountry}</span>}</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="text-left py-3 px-4 font-medium text-gray-500">City</th>
+                            <th className="text-left py-3 px-4 font-medium text-gray-500">Country</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Jobs</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Avg Salary</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {jobsByCity.slice(0, 30).map((c, i) => (
+                            <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="py-2.5 px-4 font-medium text-gray-900">{c.city}</td>
+                              <td className="py-2.5 px-4 text-gray-600">{c.country}</td>
+                              <td className="py-2.5 px-4 text-right">{c.count.toLocaleString()}</td>
+                              <td className="py-2.5 px-4 text-right text-green-700">${c.avgSalary?.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Country Comparison Chart */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-lg font-semibold mb-4">Country Comparison: Jobs vs Avg Salary</h3>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <BarChart data={countryDist}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="_id" />
+                        <YAxis yAxisId="left" />
+                        <YAxis yAxisId="right" orientation="right" tickFormatter={v => `$${v.toLocaleString()}`} />
+                        <Tooltip />
+                        <Legend />
+                        <Bar yAxisId="left" dataKey="count" fill="#3b82f6" name="Jobs" radius={[4, 4, 0, 0]} />
+                        <Bar yAxisId="right" dataKey="avgSalary" fill="#10b981" name="Avg Salary" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Growth Trends Tab */}
+              {activeTab === 'trends' && (
+                <div className="space-y-8">
+                  {/* Filters */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                    <div className="flex items-center gap-4">
+                      <Calendar className="h-4 w-4 text-gray-500" />
+                      <label className="text-sm font-medium text-gray-700">Time Range:</label>
+                      <select
+                        value={growthMonths}
+                        onChange={(e) => setGrowthMonths(Number(e.target.value))}
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value={3}>Last 3 Months</option>
+                        <option value={6}>Last 6 Months</option>
+                        <option value={12}>Last 12 Months</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Growth by Country Multi-line Chart */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-lg font-semibold mb-4">Job Growth by Country</h3>
+                    {countries.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={400}>
+                        <LineChart data={timeline}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          {countries.slice(0, 8).map((country, i) => (
+                            <Line key={country} type="monotone" dataKey={country} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={false} />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex justify-center py-16 text-gray-500">No growth data available for selected time range</div>
+                    )}
+                  </div>
+
+                  {/* Country Growth Summary */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-lg font-semibold mb-4">Growth Summary by Country</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="text-left py-3 px-4 font-medium text-gray-500">Country</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Total Jobs</th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-500">Avg Monthly</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {countryDist.map((c, i) => (
+                            <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="py-2.5 px-4 font-medium text-gray-900">{c._id}</td>
+                              <td className="py-2.5 px-4 text-right">{c.count?.toLocaleString()}</td>
+                              <td className="py-2.5 px-4 text-right">{growthMonths > 0 ? Math.round((c.count || 0) / growthMonths).toLocaleString() : '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </main>
-      
+
       <Footer />
     </div>
   );

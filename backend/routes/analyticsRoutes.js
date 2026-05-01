@@ -11,5 +11,12 @@ router.get("/salary-by-seniority", AnalyticsController.salaryBySeniority);
 router.get("/salary-by-title", AnalyticsController.salaryByJobTitle);
 router.get("/trends", AnalyticsController.jobTrends);
 router.get("/companies", AnalyticsController.topCompanies);
+router.get("/salary-distribution", AnalyticsController.salaryDistribution);
+router.get("/job-growth", AnalyticsController.jobGrowthByCountry);
+router.get("/skill-demand", AnalyticsController.skillDemandByCategory);
+router.get("/jobs-by-city", AnalyticsController.jobsByCity);
+router.get("/skill-trends", AnalyticsController.trendsBySkill);
+router.get("/industry-breakdown", AnalyticsController.industryBreakdown);
+router.get("/advanced-stats", AnalyticsController.advancedStats);
 
 module.exports = router;
