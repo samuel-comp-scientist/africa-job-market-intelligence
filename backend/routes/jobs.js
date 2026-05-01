@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const Job = require('../models/Job');
 const { validateJobQuery } = require('../middleware/validation');
+const JobScraperService = require('../services/scraper');
+const auth = require('../middleware/auth');
 
 /**
  * @swagger
@@ -367,6 +369,199 @@ router.post('/search', async (req, res) => {
   } catch (error) {
     console.error('Error searching jobs:', error);
     res.status(500).json({ error: 'Failed to search jobs' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/jobs/scrape:
+ *   post:
+ *     summary: Scrape new jobs from job boards
+ *     tags: [Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               keywords:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Keywords to search for
+ *                 default: ['software developer', 'data scientist', 'web developer']
+ *     responses:
+ *       200:
+ *         description: Jobs scraped successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.post('/scrape', auth, async (req, res) => {
+  try {
+    const { keywords = ['software developer', 'data scientist', 'web developer'] } = req.body;
+    
+    const scraper = new JobScraperService();
+    const scrapedJobs = await scraper.scrapeAllSources(keywords);
+    
+    res.json({
+      message: 'Jobs scraped successfully',
+      jobsFound: scrapedJobs.length,
+      data: scrapedJobs
+    });
+  } catch (error) {
+    console.error('Error scraping jobs:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/jobs/skills/top:
+ *   get:
+ *     summary: Get top skills in job market
+ *     tags: [Jobs]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of top skills to return
+ *     responses:
+ *       200:
+ *         description: Top skills list
+ */
+router.get('/skills/top', async (req, res) => {
+  try {
+    const { limit = 20 } = req.query;
+    const topSkills = await Job.getTopSkills(parseInt(limit));
+    
+    res.json(topSkills);
+  } catch (error) {
+    console.error('Error fetching top skills:', error);
+    res.status(500).json({ error: 'Failed to fetch top skills' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/jobs/country/{country}:
+ *   get:
+ *     summary: Get jobs by country
+ *     tags: [Jobs]
+ *     parameters:
+ *       - in: path
+ *         name: country
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Country name
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of jobs per page
+ *     responses:
+ *       200:
+ *         description: Jobs by country
+ */
+router.get('/country/:country', async (req, res) => {
+  try {
+    const { country } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+    
+    const jobs = await Job.find({ 
+      country: country, 
+      isActive: true 
+    })
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .sort({ postedDate: -1 })
+      .exec();
+
+    const count = await Job.countDocuments({ country, isActive: true });
+
+    res.json({
+      jobs,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+      total: count
+    });
+  } catch (error) {
+    console.error('Error fetching jobs by country:', error);
+    res.status(500).json({ error: 'Failed to fetch jobs by country' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/jobs/skill/{skill}:
+ *   get:
+ *     summary: Get jobs by skill
+ *     tags: [Jobs]
+ *     parameters:
+ *       - in: path
+ *         name: skill
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Skill name
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of jobs per page
+ *     responses:
+ *       200:
+ *         description: Jobs by skill
+ */
+router.get('/skill/:skill', async (req, res) => {
+  try {
+    const { skill } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+    
+    const jobs = await Job.find({ 
+      skills: { $in: [new RegExp(skill, 'i')] },
+      isActive: true 
+    })
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .sort({ postedDate: -1 })
+      .exec();
+
+    const count = await Job.countDocuments({ 
+      skills: { $in: [new RegExp(skill, 'i')] },
+      isActive: true 
+    });
+
+    res.json({
+      jobs,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+      total: count
+    });
+  } catch (error) {
+    console.error('Error fetching jobs by skill:', error);
+    res.status(500).json({ error: 'Failed to fetch jobs by skill' });
   }
 });
 

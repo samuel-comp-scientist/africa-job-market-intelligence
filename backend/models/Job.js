@@ -202,6 +202,49 @@ jobSchema.statics.getJobsByCountry = function() {
   ]);
 };
 
+jobSchema.statics.getSalaryBySkill = function() {
+  return this.aggregate([
+    { $match: { isActive: true, skills: { $exists: true, $ne: [] }, $or: [{ salaryMin: { $gt: 0 } }, { salaryMax: { $gt: 0 } }] } },
+    { $unwind: '$skills' },
+    {
+      $group: {
+        _id: '$skills',
+        avgSalary: { $avg: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] } },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { avgSalary: -1 } },
+    { $project: { skill: '$_id', avgSalary: { $round: ['$avgSalary', 0] }, count: 1, _id: 0 } }
+  ]);
+};
+
+jobSchema.statics.getJobTrends = function() {
+  return this.aggregate([
+    { $match: { isActive: true } },
+    {
+      $group: {
+        _id: { $dateToString: { format: "%Y-%m", date: '$postedDate' } },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { _id: 1 } }
+  ]);
+};
+
+jobSchema.statics.getTopCompanies = function(limit = 10) {
+  return this.aggregate([
+    { $match: { isActive: true } },
+    {
+      $group: {
+        _id: '$company',
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { count: -1 } },
+    { $limit: limit }
+  ]);
+};
+
 // Pre-save middleware to extract additional information
 jobSchema.pre('save', function(next) {
   // Extract seniority level from job title
