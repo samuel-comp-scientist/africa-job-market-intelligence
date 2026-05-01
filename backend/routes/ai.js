@@ -416,6 +416,157 @@ router.get('/top-companies', authenticate, requireAdmin, async (req, res) => {
 });
 
 /**
+ * Open-access Job Seeker endpoints (no auth required)
+ */
+
+// Get career paths and their required skills
+router.get('/career-paths', async (req, res) => {
+  try {
+    const careerPaths = Object.entries(aiCareerAdvisor.careerPaths).map(([title, data]) => ({
+      title,
+      requiredSkills: data.requiredSkills,
+      demandLevel: data.demandLevel,
+      growthRate: data.growthRate,
+      averageSalary: data.averageSalary
+    }));
+    
+    res.json({ success: true, data: careerPaths });
+  } catch (error) {
+    console.error('Career paths error:', error);
+    res.status(500).json({ error: 'Failed to fetch career paths' });
+  }
+});
+
+// Analyze skill gap for a career
+router.post('/skill-gap', async (req, res) => {
+  try {
+    const { userSkills, desiredCareer } = req.body;
+    
+    if (!userSkills || !Array.isArray(userSkills) || !desiredCareer) {
+      return res.status(400).json({ error: 'Missing userSkills (array) or desiredCareer' });
+    }
+
+    const careerPath = aiCareerAdvisor.careerPaths[desiredCareer];
+    if (!careerPath) {
+      return res.status(400).json({ error: 'Unknown career path' });
+    }
+
+    const analysis = aiCareerAdvisor.analyzeSkills(userSkills, careerPath.requiredSkills);
+    const roadmap = aiCareerAdvisor.generateLearningRoadmap(analysis.missingSkills);
+
+    res.json({
+      success: true,
+      data: {
+        career: desiredCareer,
+        ...analysis,
+        learningRoadmap: roadmap,
+        careerInfo: {
+          demandLevel: careerPath.demandLevel,
+          growthRate: careerPath.growthRate,
+          averageSalary: careerPath.averageSalary
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Skill gap error:', error);
+    res.status(500).json({ error: 'Failed to analyze skill gap' });
+  }
+});
+
+// Get AI skill recommendations
+router.post('/skill-recommendations', async (req, res) => {
+  try {
+    const { userSkills, desiredCareer } = req.body;
+    
+    if (!userSkills || !Array.isArray(userSkills)) {
+      return res.status(400).json({ error: 'userSkills (array) is required' });
+    }
+
+    const careerPath = desiredCareer ? aiCareerAdvisor.careerPaths[desiredCareer] : null;
+    const allKnownSkills = Object.keys(aiCareerAdvisor.skillWeights);
+    
+    const missingSkills = careerPath
+      ? careerPath.requiredSkills.filter(s => !userSkills.some(u => u.toLowerCase() === s.toLowerCase()))
+      : allKnownSkills.filter(s => !userSkills.some(u => u.toLowerCase() === s.toLowerCase()));
+
+    const recommendations = missingSkills.map(skill => ({
+      skill,
+      priority: aiCareerAdvisor.getSkillPriority(skill),
+      estimatedTime: aiCareerAdvisor.getSkillTimeEstimate(skill) + ' months',
+      resources: aiCareerAdvisor.learningResources[skill] || []
+    })).sort((a, b) => b.priority - a.priority);
+
+    res.json({
+      success: true,
+      data: {
+        recommendations: recommendations.slice(0, 8),
+        trending: ['AI/ML', 'Cloud Computing', 'TypeScript', 'Kubernetes', 'React Native']
+          .filter(t => !userSkills.some(u => u.toLowerCase() === t.toLowerCase()))
+          .slice(0, 5)
+      }
+    });
+  } catch (error) {
+    console.error('Skill recommendations error:', error);
+    res.status(500).json({ error: 'Failed to generate recommendations' });
+  }
+});
+
+// Get job market predictions
+router.get('/predictions', async (req, res) => {
+  try {
+    const { timeframe = '12months' } = req.query;
+
+    const recentJobs = await Job.countDocuments({
+      postedDate: { $gte: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) },
+      isActive: true
+    });
+    const olderJobs = await Job.countDocuments({
+      postedDate: { $gte: new Date(Date.now() - 12 * 30 * 24 * 60 * 60 * 1000), $lt: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) },
+      isActive: true
+    });
+
+    const overallGrowth = olderJobs > 0 ? Math.round(((recentJobs - olderJobs) / olderJobs) * 100) : 0;
+
+    const skillTrends = await Job.aggregate([
+      { $match: { postedDate: { $gte: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) }, isActive: true } },
+      { $unwind: '$skills' },
+      { $group: { _id: '$skills', recent: { $sum: 1 } } }
+    ]);
+
+    const olderSkillTrends = await Job.aggregate([
+      { $match: { postedDate: { $gte: new Date(Date.now() - 12 * 30 * 24 * 60 * 60 * 1000), $lt: new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) }, isActive: true } },
+      { $unwind: '$skills' },
+      { $group: { _id: '$skills', older: { $sum: 1 } } }
+    ]);
+
+    const olderMap = {};
+    olderSkillTrends.forEach(t => { olderMap[t._id.toLowerCase()] = t.older; });
+
+    const predictions = skillTrends
+      .map(s => {
+        const older = olderMap[s._id.toLowerCase()] || 0;
+        const growth = older > 0 ? Math.round(((s.recent - older) / older) * 100) : (s.recent > 0 ? 50 : 0);
+        return { skill: s._id, currentDemand: s.recent, growth, projected: growth > 0 ? Math.round(s.recent * (1 + growth / 100 * 2)) : s.recent };
+      })
+      .sort((a, b) => b.growth - a.growth)
+      .slice(0, 15);
+
+    res.json({
+      success: true,
+      data: {
+        overallJobGrowth: overallGrowth,
+        timeframe,
+        totalRecentJobs: recentJobs,
+        skillPredictions: predictions
+      }
+    });
+  } catch (error) {
+    console.error('Predictions error:', error);
+    res.status(500).json({ error: 'Failed to generate predictions' });
+  }
+});
+
+/**
  * Data Science Playground
  */
 

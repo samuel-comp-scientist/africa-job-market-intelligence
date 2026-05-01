@@ -51,8 +51,9 @@ export default function DeveloperDashboard() {
       
       const data = await response.json();
       console.log(data);
-    } catch (error) {
-      console.error('Error:', error.response.data);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: unknown } };
+      console.error('Error:', err.response?.data ?? error);
     }
   };
 

@@ -16,10 +16,9 @@ export default function DashboardRedirect() {
     }
 
     const parsedUser = JSON.parse(user);
-    const userType = parsedUser.userType;
+    const userType: string = parsedUser.userType;
 
-    // Redirect to appropriate dashboard based on user type
-    const dashboardRoutes = {
+    const dashboardRoutes: Record<string, string> = {
       jobseeker: '/dashboard/jobseeker',
       recruiter: '/dashboard/recruiter',
       researcher: '/dashboard/researcher',

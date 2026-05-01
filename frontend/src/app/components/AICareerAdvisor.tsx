@@ -194,7 +194,7 @@ export default function AICareerAdvisor() {
       {
         step: 1,
         title: 'Foundation Skills',
-        skills: missingSkills.slice(0, 2),
+        skills: missingSkills.slice(0, 2).map(s => s.name),
         estimatedTime: '2-3 months',
         priority: 'high',
         resources: [
@@ -221,7 +221,7 @@ export default function AICareerAdvisor() {
       {
         step: 2,
         title: 'Advanced Technologies',
-        skills: missingSkills.slice(2, 4),
+        skills: missingSkills.slice(2, 4).map(s => s.name),
         estimatedTime: '3-4 months',
         priority: 'medium',
         resources: [
@@ -239,7 +239,7 @@ export default function AICareerAdvisor() {
       {
         step: 3,
         title: 'Practical Projects',
-        skills: missingSkills.slice(4),
+        skills: missingSkills.slice(4).map(s => s.name),
         estimatedTime: '2-3 months',
         priority: 'medium',
         resources: [

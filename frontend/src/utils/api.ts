@@ -92,4 +92,8 @@ export const analyticsApi = {
   getSalaryByJobTitle(limit = 15) {
     return api<SalaryByTitle[]>(`/api/analytics/salary-by-title?limit=${limit}`);
   },
+
+  getPredictions(timeframe = '12months') {
+    return api<{ overallJobGrowth: number; timeframe: string; totalRecentJobs: number; skillPredictions: Array<{ skill: string; currentDemand: number; growth: number; projected: number }> }>(`/api/ai/predictions?timeframe=${timeframe}`);
+  },
 };

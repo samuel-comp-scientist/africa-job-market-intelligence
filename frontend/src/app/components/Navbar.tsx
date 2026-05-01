@@ -68,9 +68,9 @@ export default function Navbar() {
 
   const navigation = [
     { name: 'Home', href: '/' },
-    { name: 'Features', href: '#features' },
-    { name: 'How It Works', href: '#how-it-works' },
-    { name: 'Analytics', href: '/analytics' }
+    { name: 'Jobs', href: '/jobs' },
+    { name: 'Analytics', href: '/analytics' },
+    { name: 'Career Paths', href: '/career-roadmaps' }
   ];
 
   const UserIcon = getUserIcon();

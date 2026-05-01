@@ -311,6 +311,171 @@ jobSchema.statics.getSalaryByJobTitle = function(limit = 15) {
   ]);
 };
 
+jobSchema.statics.getSalaryDistribution = function() {
+  return this.aggregate([
+    { $match: { isActive: true, $or: [{ salaryMin: { $gt: 0 } }, { salaryMax: { $gt: 0 } }] } },
+    {
+      $project: {
+        avgSalary: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          $switch: {
+            branches: [
+              { case: { $lt: ['$avgSalary', 1000] }, then: 'Under $1K' },
+              { case: { $lt: ['$avgSalary', 2000] }, then: '$1K-$2K' },
+              { case: { $lt: ['$avgSalary', 3000] }, then: '$2K-$3K' },
+              { case: { $lt: ['$avgSalary', 5000] }, then: '$3K-$5K' },
+              { case: { $lt: ['$avgSalary', 8000] }, then: '$5K-$8K' },
+              { case: { $lt: ['$avgSalary', 12000] }, then: '$8K-$12K' }
+            ],
+            default: '$12K+'
+          }
+        },
+        count: { $sum: 1 },
+        avgInBucket: { $avg: '$avgSalary' }
+      }
+    },
+    { $sort: { avgInBucket: 1 } },
+    { $project: { range: '$_id', count: 1, avgSalary: { $round: ['$avgInBucket', 0] }, _id: 0 } }
+  ]);
+};
+
+jobSchema.statics.getJobGrowthByCountry = function(months = 12) {
+  const startDate = new Date();
+  startDate.setMonth(startDate.getMonth() - months);
+  return this.aggregate([
+    { $match: { isActive: true, postedDate: { $gte: startDate } } },
+    {
+      $group: {
+        _id: {
+          country: '$country',
+          month: { $dateToString: { format: "%Y-%m", date: '$postedDate' } }
+        },
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { '_id.country': 1, '_id.month': 1 } },
+    {
+      $project: {
+        country: '$_id.country',
+        month: '$_id.month',
+        count: 1,
+        _id: 0
+      }
+    }
+  ]);
+};
+
+jobSchema.statics.getSkillDemandByCategory = function() {
+  return this.aggregate([
+    { $match: { isActive: true, skills: { $exists: true, $ne: [] } } },
+    { $unwind: '$skills' },
+    {
+      $group: {
+        _id: '$skills',
+        count: { $sum: 1 },
+        countries: { $addToSet: '$country' }
+      }
+    },
+    {
+      $project: {
+        skill: '$_id',
+        count: 1,
+        countryCount: { $size: '$countries' },
+        _id: 0
+      }
+    },
+    { $sort: { count: -1 } },
+    { $limit: 30 }
+  ]);
+};
+
+jobSchema.statics.getJobsByCity = function(country) {
+  const match = { isActive: true };
+  if (country) match.country = country;
+  return this.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: { country: '$country', city: '$city' },
+        count: { $sum: 1 },
+        avgSalary: { $avg: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] } }
+      }
+    },
+    { $sort: { count: -1 } },
+    { $limit: 50 },
+    {
+      $project: {
+        country: '$_id.country',
+        city: { $ifNull: ['$_id.city', 'Unknown'] },
+        count: 1,
+        avgSalary: { $round: ['$avgSalary', 0] },
+        _id: 0
+      }
+    }
+  ]);
+};
+
+jobSchema.statics.getTrendsBySkill = function(skill) {
+  return this.aggregate([
+    { $match: { isActive: true, skills: skill.toLowerCase() } },
+    {
+      $group: {
+        _id: { $dateToString: { format: "%Y-%m", date: '$postedDate' } },
+        count: { $sum: 1 },
+        avgSalary: { $avg: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] } }
+      }
+    },
+    { $sort: { _id: 1 } },
+    {
+      $project: {
+        month: '$_id',
+        count: 1,
+        avgSalary: { $round: ['$avgSalary', 0] },
+        _id: 0
+      }
+    }
+  ]);
+};
+
+jobSchema.statics.getIndustryBreakdown = function() {
+  return this.aggregate([
+    { $match: { isActive: true } },
+    {
+      $project: {
+        industry: {
+          $switch: {
+            branches: [
+              { case: { $regexMatch: { input: { $toLower: '$jobTitle' }, regex: 'software|developer|engineer|programmer' } }, then: 'Software Development' },
+              { case: { $regexMatch: { input: { $toLower: '$jobTitle' }, regex: 'data|analyst|analytics|bi' } }, then: 'Data & Analytics' },
+              { case: { $regexMatch: { input: { $toLower: '$jobTitle' }, regex: 'ai|ml|machine learning|deep learning' } }, then: 'AI/ML' },
+              { case: { $regexMatch: { input: { $toLower: '$jobTitle' }, regex: 'devops|cloud|infrastructure|sre' } }, then: 'DevOps & Cloud' },
+              { case: { $regexMatch: { input: { $toLower: '$jobTitle' }, regex: 'security|cyber' } }, then: 'Cybersecurity' },
+              { case: { $regexMatch: { input: { $toLower: '$jobTitle' }, regex: 'design|ui|ux' } }, then: 'Design' },
+              { case: { $regexMatch: { input: { $toLower: '$jobTitle' }, regex: 'product|manager|scrum' } }, then: 'Product Management' },
+              { case: { $regexMatch: { input: { $toLower: '$jobTitle' }, regex: 'qa|test|quality' } }, then: 'Quality Assurance' }
+            ],
+            default: 'Other'
+          }
+        },
+        salaryAvg: { $avg: [{ $ifNull: ['$salaryMin', 0] }, { $ifNull: ['$salaryMax', 0] }] }
+      }
+    },
+    {
+      $group: {
+        _id: '$industry',
+        count: { $sum: 1 },
+        avgSalary: { $avg: '$salaryAvg' }
+      }
+    },
+    { $sort: { count: -1 } },
+    { $project: { industry: '$_id', count: 1, avgSalary: { $round: ['$avgSalary', 0] }, _id: 0 } }
+  ]);
+};
+
 // Pre-save middleware to extract additional information
 jobSchema.pre('save', function(next) {
   // Extract seniority level from job title

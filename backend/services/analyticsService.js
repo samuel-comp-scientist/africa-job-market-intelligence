@@ -53,6 +53,61 @@ class AnalyticsService {
     return results;
   }
 
+  static async getSalaryDistribution() {
+    const results = await Job.getSalaryDistribution();
+    return results;
+  }
+
+  static async getJobGrowthByCountry(months = 12) {
+    const results = await Job.getJobGrowthByCountry(months);
+    return results;
+  }
+
+  static async getSkillDemandByCategory() {
+    const results = await Job.getSkillDemandByCategory();
+    return results;
+  }
+
+  static async getJobsByCity(country) {
+    const results = await Job.getJobsByCity(country);
+    return results;
+  }
+
+  static async getTrendsBySkill(skill) {
+    const results = await Job.getTrendsBySkill(skill);
+    return results;
+  }
+
+  static async getIndustryBreakdown() {
+    const results = await Job.getIndustryBreakdown();
+    return results;
+  }
+
+  static async getAdvancedStats() {
+    const [totalJobs, activeJobs, withSalary, countries, skills, companies] = await Promise.all([
+      Job.countDocuments(),
+      Job.countDocuments({ isActive: true }),
+      Job.countDocuments({ isActive: true, $or: [{ salaryMin: { $gt: 0 } }, { salaryMax: { $gt: 0 } }] }),
+      Job.distinct('country', { isActive: true }),
+      Job.aggregate([
+        { $match: { isActive: true } },
+        { $unwind: '$skills' },
+        { $group: { _id: '$skills' } },
+        { $count: 'total' }
+      ]),
+      Job.distinct('company', { isActive: true })
+    ]);
+    return {
+      totalJobs,
+      activeJobs,
+      withSalary,
+      countries: countries.length,
+      uniqueSkills: skills[0]?.total || 0,
+      companies: companies.length,
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
 }
 
 module.exports = AnalyticsService;

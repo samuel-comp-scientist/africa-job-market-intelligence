@@ -3,7 +3,7 @@ const router = express.Router();
 const Job = require('../models/Job');
 const { validateJobQuery } = require('../middleware/validation');
 const JobScraperService = require('../services/scraper');
-const auth = require('../middleware/auth');
+const authMiddleware = require('../middleware/auth');
 
 /**
  * @swagger
@@ -83,7 +83,7 @@ router.get('/', validateJobQuery, async (req, res) => {
     } = req.query;
 
     // Build query
-    const query = { active: true };
+    const query = { isActive: true };
 
     if (country) {
       query.country = new RegExp(country, 'i');
@@ -94,11 +94,11 @@ router.get('/', validateJobQuery, async (req, res) => {
     }
 
     if (seniority) {
-      query.seniority_level = seniority;
+      query.seniorityLevel = seniority;
     }
 
     if (remote === 'true') {
-      query.remote_option = true;
+      query.jobType = 'remote';
     }
 
     // Pagination
@@ -213,25 +213,25 @@ router.get('/:id', async (req, res) => {
  */
 router.get('/stats/overview', async (req, res) => {
   try {
-    const total = await Job.countDocuments({ active: true });
+    const total = await Job.countDocuments({ isActive: true });
     
     const byCountry = await Job.aggregate([
-      { $match: { active: true } },
+      { $match: { isActive: true } },
       { $group: { _id: '$country', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $project: { country: '$_id', count: 1, _id: 0 } }
     ]);
 
     const bySeniority = await Job.aggregate([
-      { $match: { active: true } },
-      { $group: { _id: '$seniority_level', count: { $sum: 1 } } },
+      { $match: { isActive: true } },
+      { $group: { _id: '$seniorityLevel', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $project: { level: '$_id', count: 1, _id: 0 } }
     ]);
 
     const byJobType = await Job.aggregate([
-      { $match: { active: true } },
-      { $group: { _id: '$job_type', count: { $sum: 1 } } },
+      { $match: { isActive: true } },
+      { $group: { _id: '$jobType', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $project: { type: '$_id', count: 1, _id: 0 } }
     ]);
@@ -306,14 +306,14 @@ router.post('/search', async (req, res) => {
       page = 1
     } = req.body;
 
-    const query = { active: true };
+    const query = { isActive: true };
 
     // Keywords search in title and description
     if (keywords) {
       const keywordRegex = new RegExp(keywords, 'i');
       query.$or = [
-        { title: keywordRegex },
-        { description: keywordRegex }
+        { jobTitle: keywordRegex },
+        { jobDescription: keywordRegex }
       ];
     }
 
@@ -328,15 +328,16 @@ router.post('/search', async (req, res) => {
     }
 
     // Salary range filter
-    if (salaryMin || salaryMax) {
-      query.salary_numeric = {};
-      if (salaryMin) query.salary_numeric.$gte = salaryMin;
-      if (salaryMax) query.salary_numeric.$lte = salaryMax;
+    if (salaryMin !== undefined || salaryMax !== undefined) {
+      if (salaryMin !== undefined) query.salaryMin = { $gte: salaryMin };
+      if (salaryMax !== undefined) {
+        query.salaryMax = query.salaryMax ? { ...query.salaryMax, $lte: salaryMax } : { $lte: salaryMax };
+      }
     }
 
     // Seniority filter
     if (seniority && seniority.length > 0) {
-      query.seniority_level = { $in: seniority };
+      query.seniorityLevel = { $in: seniority };
     }
 
     // Remote filter
@@ -401,7 +402,7 @@ router.post('/search', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.post('/scrape', auth, async (req, res) => {
+router.post('/scrape', authMiddleware.authenticate, async (req, res) => {
   try {
     const { keywords = ['software developer', 'data scientist', 'web developer'] } = req.body;
     

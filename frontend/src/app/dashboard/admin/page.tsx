@@ -7,9 +7,8 @@ import {
   CheckCircle, XCircle, RefreshCw, Download, Upload, Calendar, TrendingUp,
   Shield, Key, FileText, Activity, Zap, Server, Cpu, HardDrive, Wifi,
   Search, Filter, Edit, Trash2, Eye, Play, Pause, RotateCcw, ChevronRight,
-  Menu, X, LogOut, Home, User, Briefcase, Code
+  Menu, X, LogOut, Home, User, Briefcase, Code, BarChart
 } from 'lucide-react';
-import DataVisualization from '../../../components/DataVisualization';
 
 interface AdminStats {
   totalJobs: number;
@@ -1757,7 +1756,15 @@ export default function AdminDashboard() {
       case 'data-quality': return renderDataQuality();
       case 'users': return renderUserManagement();
       case 'datasets': return renderDatasetManagement();
-      case 'visualization': return <DataVisualization />;
+      case 'visualization': return (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <BarChart className="h-5 w-5 text-blue-600" />
+            <h3 className="text-lg font-semibold">Data Visualization</h3>
+          </div>
+          <p className="text-gray-600">Use the Analytics dashboard for comprehensive data visualizations.</p>
+        </div>
+      );
       default: return renderOverview();
     }
   };

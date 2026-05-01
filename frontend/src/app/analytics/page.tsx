@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
-import { TrendingUp, Code, Brain, Globe, ArrowUpRight, DollarSign } from 'lucide-react';
+import { TrendingUp, Code, Brain, Globe, ArrowUpRight, DollarSign, Target } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { analyticsApi, type SkillCount, type CountryData, type SalaryBySkill, type JobTrends, type CompanyCount, type SalaryByCountry, type SalaryBySeniority, type SalaryByTitle } from '@/utils/api';
@@ -76,6 +76,7 @@ export default function AnalyticsPage() {
   const [salaryByCountry, setSalaryByCountry] = useState<SalaryByCountry[]>([]);
   const [salaryBySeniority, setSalaryBySeniority] = useState<SalaryBySeniority[]>([]);
   const [salaryByTitle, setSalaryByTitle] = useState<SalaryByTitle[]>([]);
+  const [predictions, setPredictions] = useState<{ overallJobGrowth: number; totalRecentJobs: number; skillPredictions: Array<{ skill: string; currentDemand: number; growth: number; projected: number }> }>({ overallJobGrowth: 0, totalRecentJobs: 0, skillPredictions: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,7 +90,8 @@ export default function AnalyticsPage() {
       analyticsApi.getSalaryByCountry(),
       analyticsApi.getSalaryBySeniority(),
       analyticsApi.getSalaryByJobTitle(15),
-    ]).then(([skillsRes, countriesRes, salaryRes, trendsRes, companiesRes, salaryCountryRes, salarySeniorityRes, salaryTitleRes]) => {
+      analyticsApi.getPredictions(),
+    ]).then(([skillsRes, countriesRes, salaryRes, trendsRes, companiesRes, salaryCountryRes, salarySeniorityRes, salaryTitleRes, predictionsRes]) => {
       if (skillsRes.status === 'fulfilled') setSkills(skillsRes.value);
       if (countriesRes.status === 'fulfilled') setCountries(countriesRes.value);
       if (salaryRes.status === 'fulfilled') setSalaryBySkill(salaryRes.value);
@@ -98,8 +100,9 @@ export default function AnalyticsPage() {
       if (salaryCountryRes.status === 'fulfilled') setSalaryByCountry(salaryCountryRes.value);
       if (salarySeniorityRes.status === 'fulfilled') setSalaryBySeniority(salarySeniorityRes.value);
       if (salaryTitleRes.status === 'fulfilled') setSalaryByTitle(salaryTitleRes.value);
+      if (predictionsRes.status === 'fulfilled') setPredictions(predictionsRes.value);
 
-      const errors = [skillsRes, countriesRes, salaryRes, trendsRes, companiesRes, salaryCountryRes, salarySeniorityRes, salaryTitleRes]
+      const errors = [skillsRes, countriesRes, salaryRes, trendsRes, companiesRes, salaryCountryRes, salarySeniorityRes, salaryTitleRes, predictionsRes]
         .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
         .map((r) => (r.reason as Error).message);
 
@@ -175,7 +178,6 @@ export default function AnalyticsPage() {
 
               {/* Row 1: Top Skills + Trends Over Time */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                {/* Top Demanded Skills */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <Brain className="h-5 w-5 text-blue-600" />
@@ -196,7 +198,6 @@ export default function AnalyticsPage() {
                   )}
                 </div>
 
-                {/* Job Posting Trends */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <TrendingUp className="h-5 w-5 text-green-600" />
@@ -220,7 +221,6 @@ export default function AnalyticsPage() {
 
               {/* Row 2: Skill Categories + Programming Languages */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                {/* Skill Category Breakdown */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <Globe className="h-5 w-5 text-purple-600" />
@@ -255,7 +255,6 @@ export default function AnalyticsPage() {
                   )}
                 </div>
 
-                {/* Top Programming Languages */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <Code className="h-5 w-5 text-indigo-600" />
@@ -284,9 +283,8 @@ export default function AnalyticsPage() {
                 </div>
               </div>
 
-              {/* Row 3: Fastest Growing (by DevOps/Frameworks) + Salary by Skill */}
+              {/* Row 3: Fastest Growing + Salary by Skill */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                {/* Fastest Growing Technologies */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <ArrowUpRight className="h-5 w-5 text-emerald-600" />
@@ -317,7 +315,6 @@ export default function AnalyticsPage() {
                   )}
                 </div>
 
-                {/* Salary by Skill */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <ArrowUpRight className="h-5 w-5 text-amber-600" />
@@ -340,8 +337,7 @@ export default function AnalyticsPage() {
               </div>
 
               {/* Row 4: Country Distribution + Top Companies */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Jobs by Country */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <Globe className="h-5 w-5 text-cyan-600" />
@@ -372,7 +368,6 @@ export default function AnalyticsPage() {
                   )}
                 </div>
 
-                {/* Top Hiring Companies */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <TrendingUp className="h-5 w-5 text-violet-600" />
@@ -407,7 +402,6 @@ export default function AnalyticsPage() {
 
               {/* Row 5: Highest Paying Skills + Salary by Country */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                {/* Highest Paying Skills */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <DollarSign className="h-5 w-5 text-emerald-600" />
@@ -435,7 +429,6 @@ export default function AnalyticsPage() {
                   )}
                 </div>
 
-                {/* Salary by Country */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <Globe className="h-5 w-5 text-cyan-600" />
@@ -457,9 +450,8 @@ export default function AnalyticsPage() {
                 </div>
               </div>
 
-              {/* Row 6: Salary by Job Role / Seniority */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Salary by Seniority Level */}
+              {/* Row 6: Salary by Seniority + Salary by Job Title */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <TrendingUp className="h-5 w-5 text-violet-600" />
@@ -484,7 +476,6 @@ export default function AnalyticsPage() {
                   )}
                 </div>
 
-                {/* Salary by Job Title */}
                 <div className="bg-white rounded-xl shadow p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <DollarSign className="h-5 w-5 text-amber-600" />
@@ -502,6 +493,51 @@ export default function AnalyticsPage() {
                         <Bar dataKey="avgSalary" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={20} />
                       </BarChart>
                     </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
+
+              {/* Section: Future Predictions */}
+              <div className="mt-8 mb-4 flex items-center gap-3">
+                <Target className="h-6 w-6 text-rose-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Future Job Predictions</h2>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white rounded-xl shadow p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Market Growth Outlook</h3>
+                  <div className="text-center py-6">
+                    <p className="text-5xl font-bold text-green-600">+{predictions.overallJobGrowth}%</p>
+                    <p className="text-sm text-gray-500 mt-2">job market growth over the last 6 months</p>
+                  </div>
+                  <div className="border-t border-gray-100 pt-4 mt-4">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">{predictions.totalRecentJobs}</span> jobs posted in the last 6 months
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Fastest Growing Skills (Projected)</h3>
+                  {predictions.skillPredictions.length === 0 ? (
+                    <p className="text-gray-500 text-sm py-8 text-center">No prediction data available yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {predictions.skillPredictions.slice(0, 8).map((p, i) => (
+                        <div key={p.skill} className="flex items-center justify-between py-1.5">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-mono text-gray-400 w-4">{i + 1}</span>
+                            <span className="text-sm font-medium text-gray-900 capitalize">{p.skill}</span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-xs text-gray-500">{p.currentDemand} jobs</span>
+                            <span className={`text-sm font-semibold ${p.growth >= 30 ? 'text-green-600' : p.growth >= 10 ? 'text-blue-600' : 'text-gray-500'}`}>
+                              {p.growth >= 0 ? '+' : ''}{p.growth}%
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
